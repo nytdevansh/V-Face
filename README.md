@@ -43,7 +43,7 @@ FaceGuard is a decentralized protocol that allows individuals to register their 
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/faceguard-protocol
+git clone https://github.com/nytdevansh/faceguard-protocol
 cd faceguard-protocol
 
 # Install dependencies
