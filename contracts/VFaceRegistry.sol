@@ -2,8 +2,8 @@
 pragma solidity ^0.8.19;
 
 /**
- * @title FaceGuard Registry
- * @author FaceGuard Protocol Contributors
+ * @title V-Face Registry
+ * @author V-Face Protocol Contributors
  * @notice Open protocol for biometric consent management
  * @dev Stores hashed face encodings mapped to wallet addresses
  * 
@@ -13,7 +13,7 @@ pragma solidity ^0.8.19;
  * - First registration wins (prevents hijacking)
  * - All actions emit events for transparency
  */
-contract FaceRegistry {
+contract VFaceRegistry {
     
     // ============ State Variables ============
     

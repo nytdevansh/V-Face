@@ -1,8 +1,8 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-describe("FaceRegistry", function () {
-  let FaceRegistry;
+describe("VFaceRegistry", function () {
+  let VFaceRegistry;
   let faceRegistry;
   let owner;
   let alice;
@@ -19,11 +19,10 @@ describe("FaceRegistry", function () {
     [owner, alice, bob, aiService] = await ethers.getSigners();
 
     // Deploy contract
-    FaceRegistry = await ethers.getContractFactory("FaceRegistry");
-    faceRegistry = await FaceRegistry.deploy();
+    VFaceRegistry = await ethers.getContractFactory("VFaceRegistry");
+    faceRegistry = await VFaceRegistry.deploy();
     await faceRegistry.waitForDeployment();
   });
-
   describe("Deployment", function () {
     it("Should set the correct version", async function () {
       expect(await faceRegistry.VERSION()).to.equal("1.0.0");

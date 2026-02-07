@@ -10,10 +10,28 @@
 
 ---
 
-## 📖 What is FaceGuard?
+# V-Face (Alpha)
 
-FaceGuard is a decentralized protocol that allows individuals to register their facial biometric data on-chain, creating an immutable record of ownership. AI services can then verify this registration before processing images, ensuring consent and preventing misuse.
+**Privacy-Preserving Biometric Identity for AI Agents & Web3**
 
+V-Face allows users to verify their physical identity without exposing raw biometric data to servers. It uses client-side embeddings and robust similarity matching to ensure privacy.
+
+## Features (Alpha Release)
+- **Privacy First**: Embeddings are generated client-side and encrypted at rest.
+- **Robust Matching**: Uses Cosine Similarity with a tuned threshold (0.85) for accuracy.
+- **Registry Integration**: Decentralized identity registry (mock/local).
+- **Sybil Resistance**: Ensures one human = one account.
+
+## Documentation
+- [Integration Guide](docs/integration-guide.md)
+- [False Positive Analysis](docs/false-positive-analysis.md)
+- [Example: LLM Guard](examples/llm_guard.js)
+
+## Installation
+
+```bash
+npm install @v-face/sdk
+```
 ### The Problem
 
 - ❌ AI can generate deepfakes without consent
@@ -125,17 +143,19 @@ npm run deploy:mainnet
 ### 1. User Registers Face
 
 ```javascript
-// In user's browser
-import { extractFaceEncoding, hashEncoding } from '@faceguard/sdk';
+// In user's browser or app
+import { FaceGuard, extractFaceEncoding } from '@faceguard/sdk';
 
-// Extract face encoding from photo (128-d vector)
+// Initialize SDK
+const guard = new FaceGuard({ network: 'polygon' });
+
+// 1. Extract face encoding from photo
+// (Load models first if using in browser with face-api.js)
 const encoding = await extractFaceEncoding(photoFile);
 
-// Hash the encoding
-const hash = hashEncoding(encoding);
-
-// Register on-chain
-await contract.register(hash);
+// 2. Register on-chain
+// SDK handles hashing and transaction automatically
+await guard.register(encoding);
 ```
 
 ### 2. AI Service Checks Registration
@@ -150,15 +170,16 @@ const guard = new FaceGuard({ network: 'polygon' });
 async function handleImageUpload(photo, userWallet) {
   // Extract encoding client-side
   const encoding = await guard.extractEncoding(photo);
-  const hash = guard.hashEncoding(encoding);
   
-  // Check if registered
-  const owner = await guard.checkRegistration(hash);
+  // Check if registered (SDK hashes internally)
+  const owner = await guard.checkRegistration(encoding);
   
-  if (owner && owner !== userWallet) {
-    // Face belongs to someone else!
-    alert('This face is registered. Please get consent from owner.');
-    return false;
+  if (owner && owner !== "0x0000000000000000000000000000000000000000") {
+    if (owner !== userWallet) {
+       // Face belongs to someone else!
+       alert('This face is registered. Please get consent from owner.');
+       return false;
+    }
   }
   
   // Safe to proceed

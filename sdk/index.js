@@ -34,4 +34,17 @@ export class VFaceSDK {
 
         return fingerprint;
     }
+
+    /**
+     * Get raw embedding vector (Float32Array) for registration/verification
+     * @param {HTMLImageElement} imageSource 
+     * @returns {Promise<Float32Array>}
+     */
+    async getRawEmbedding(imageSource) {
+        if (!this.isLoaded) await this.init();
+        return await generateEmbedding(imageSource);
+    }
 }
+
+// Export helpers
+export { cosineSimilarity } from './embedding/pipeline.js';

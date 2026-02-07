@@ -1,4 +1,4 @@
-const { sha256, toUtf8Bytes } = require("ethers");
+import { sha256, toUtf8Bytes } from "ethers";
 
 /**
  * Hashes a face encoding vector using SHA256.
@@ -7,7 +7,7 @@ const { sha256, toUtf8Bytes } = require("ethers");
  * @param {Float32Array|number[]} encoding - The 128-dimensional face encoding vector
  * @returns {string} The 0x-prefixed SHA256 hash
  */
-function hashEncoding(encoding) {
+export function hashEncoding(encoding) {
     if (!encoding || encoding.length === 0) {
         throw new Error("Invalid encoding: must be a non-empty array or Float32Array");
     }
@@ -19,7 +19,3 @@ function hashEncoding(encoding) {
     // SHA256 hash the string representation
     return sha256(toUtf8Bytes(encodingString));
 }
-
-module.exports = {
-    hashEncoding
-};

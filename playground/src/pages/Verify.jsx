@@ -1,0 +1,226 @@
+
+import React, { useState, useRef, useCallback } from 'react';
+import Webcam from 'react-webcam';
+import { VFaceSDK, cosineSimilarity } from '@v-face/sdk';
+import { useWallet } from '../context/WalletContext';
+
+const sdk = new VFaceSDK({
+    registryUrl: 'http://localhost:3000',
+    modelPath: '/model/mobilefacenet.onnx'
+});
+
+export default function Verify() {
+    const { isConnected } = useWallet();
+    const [mode, setMode] = useState('scan'); // 'scan' | 'manual'
+    const [input, setInput] = useState('');
+    const [result, setResult] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+
+    // Webcam
+    const webcamRef = useRef(null);
+    const [imgSrc, setImgSrc] = useState(null);
+
+    const capture = useCallback(() => {
+        const imageSrc = webcamRef.current.getScreenshot();
+        setImgSrc(imageSrc);
+    }, [webcamRef]);
+
+    const handleVerifyFace = async () => {
+        if (!imgSrc) return;
+        setLoading(true);
+        setResult(null);
+        setError(null);
+
+        try {
+            const img = new Image();
+            img.src = imgSrc;
+            await new Promise(r => img.onload = r);
+
+            // 1. Get Fingerprint & Embedding
+            const fp = await sdk.getFingerprint(img);
+            // const embedding = await sdk.getRawEmbedding(img); // Not needed if we just fetch first
+
+            // 2. Lookup by Fingerprint (Hash)
+            // Note: This matches the "Strict Hash" vulnerability.
+            // If this fails, we can't get the encrypted vector easily without iterating or user input.
+            // For MVP + Robustness Test, we will try hash lookup first.
+            let res = await fetch('http://localhost:3000/check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fingerprint: fp })
+            });
+            let data = await res.json();
+
+            // If found by hash -> Perfect Match
+            if (data.exists) {
+                setResult({
+                    type: 'face',
+                    matchType: 'EXACT_HASH',
+                    similarity: 1.0,
+                    ...data
+                });
+                return;
+            }
+
+            // If NOT found by hash, we technically don't know who this is.
+            // In a real flow, the user would provide a Claimed Identity (e.g. Wallet Address).
+            // Then we fetch that record and compare.
+            // Let's fallback to "Hash Mismatch" for now, as we don't have a "Claim Identity" UI yet.
+            // But to demonstrate robustness, maybe we should fetch ALL records? 
+            // No, that's inefficient.
+
+            // To properly test the robustness adjustment, we should update the UI to allow
+            // "Claim Address" input.
+
+            setResult({ type: 'face', found: false, fingerprint: fp, reason: 'Hash Mismatch (Strict)' });
+
+        } catch (err) {
+            console.error(err);
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCheckManual = async () => {
+        if (!input) return;
+        setLoading(true);
+        setResult(null);
+        setError(null);
+
+        try {
+            const isToken = input.split('.').length === 3;
+            if (isToken) {
+                const res = await fetch('http://localhost:3000/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: input })
+                });
+                const data = await res.json();
+                setResult({ type: 'token', ...data });
+            } else {
+                const res = await fetch('http://localhost:3000/check', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fingerprint: input })
+                });
+                const data = await res.json();
+                setResult({ type: 'fingerprint', ...data });
+            }
+        } catch (err) {
+            console.error(err);
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="max-w-4xl mx-auto space-y-8">
+            <div className="bg-gray-800 p-8 rounded-xl border border-gray-700">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-white">Verification Station</h2>
+                    <div className="flex bg-black/50 rounded-lg p-1">
+                        <button
+                            onClick={() => { setMode('scan'); setResult(null); }}
+                            className={`px-4 py-1 rounded-md text-sm font-medium transition-colors ${mode === 'scan' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                        >
+                            Scan Face
+                        </button>
+                        <button
+                            onClick={() => { setMode('manual'); setResult(null); }}
+                            className={`px-4 py-1 rounded-md text-sm font-medium transition-colors ${mode === 'manual' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                        >
+                            Manual Input
+                        </button>
+                    </div>
+                </div>
+
+                {mode === 'scan' ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="space-y-4">
+                            <div className="aspect-video bg-black rounded-lg overflow-hidden relative">
+                                {!imgSrc ? (
+                                    <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" className="w-full h-full object-cover" />
+                                ) : (
+                                    <img src={imgSrc} alt="captured" className="w-full h-full object-cover" />
+                                )}
+                            </div>
+                            <div className="flex justify-center gap-4">
+                                {!imgSrc ? (
+                                    <button onClick={capture} className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-full text-sm">Capture</button>
+                                ) : (
+                                    <>
+                                        <button onClick={() => setImgSrc(null)} className="px-4 py-2 bg-gray-600 text-white rounded-full text-sm">Retake</button>
+                                        <button onClick={handleVerifyFace} disabled={loading} className="px-6 py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded-full text-sm">Verify Identity</button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Result Area */}
+                        <div className="bg-black/30 p-4 rounded-lg border border-gray-700 min-h-[200px]">
+                            <h3 className="text-gray-400 text-sm uppercase mb-4">Verification Result</h3>
+                            {loading && <div className="text-purple-400 animate-pulse text-sm">Processing Biometric Data...</div>}
+
+                            {result?.type === 'face' && (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                                    {result.found ? (
+                                        <div className="p-4 bg-green-900/20 border border-green-500/50 rounded-lg">
+                                            <div className="text-green-400 font-bold text-lg mb-2">IDENTITY VERIFIED</div>
+                                            <div className="text-sm text-gray-300">
+                                                Match Type: <span className="font-mono text-purple-300">{result.matchType}</span>
+                                            </div>
+                                            <div className="text-sm text-gray-300">
+                                                Similarity: <span className="font-mono text-white">{(result.similarity * 100).toFixed(2)}%</span>
+                                            </div>
+                                            <div className="mt-2 text-xs text-gray-500 font-mono break-all">
+                                                ID: {result.fingerprint.substring(0, 20)}...
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="p-4 bg-red-900/20 border border-red-500/50 rounded-lg">
+                                            <div className="text-red-400 font-bold text-lg mb-2">NO MATCH FOUND</div>
+                                            <p className="text-sm text-gray-300">
+                                                Strict Hash Mismatch.
+                                                <br />
+                                                <span className="text-xs text-gray-500">(To test Similarity, we need 'Claimed Identity' flow)</span>
+                                            </p>
+                                            <div className="mt-2 text-xs text-gray-500 font-mono break-all">
+                                                Generated: {result.fingerprint?.substring(0, 20)}...
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        <label className="block text-sm font-medium text-gray-400">Check Token or Fingerprint</label>
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                placeholder="Paste JWT Token or Hex Fingerprint..."
+                                className="flex-1 bg-black/50 border border-gray-600 rounded-lg px-4 py-2 text-white font-mono text-sm focus:outline-none focus:border-purple-500"
+                            />
+                            <button onClick={handleCheckManual} disabled={loading || !input} className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg transition-colors">
+                                {loading ? 'Verifying...' : 'Verify'}
+                            </button>
+                        </div>
+                        {result && (
+                            <div className={`p-6 rounded-xl border animate-in fade-in slide-in-from-top-2 ${(result.type === 'token' ? result.valid : (result.exists && !result.revoked)) ? 'bg-green-900/20 border-green-500/50' : 'bg-red-900/20 border-red-500/50'}`}>
+                                <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">{JSON.stringify(result, null, 2)}</pre>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {error && <div className="text-red-500 mt-4">{error}</div>}
+            </div>
+        </div>
+    );
+}

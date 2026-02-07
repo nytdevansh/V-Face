@@ -1,6 +1,8 @@
-const { ethers } = require("ethers");
-const { hashEncoding } = require("./utils");
-const FaceRegistryABI = require("../../artifacts/contracts/FaceRegistry.sol/FaceRegistry.json").abi;
+import { ethers } from "ethers";
+import { hashEncoding } from "./utils.js";
+import FaceRegistryArtifact from "../../artifacts/contracts/VFaceRegistry.sol/VFaceRegistry.json" with { type: "json" };
+
+const FaceRegistryABI = FaceRegistryArtifact.abi;
 
 // Default addresses (would normally be populated from a config or constants file)
 const NETWORKS = {
@@ -18,9 +20,9 @@ const NETWORKS = {
     }
 };
 
-class FaceGuard {
+export class VFace {
     /**
-     * Initialize FaceGuard SDK
+     * Initialize V-Face SDK
      * @param {Object} config - Configuration object
      * @param {string} config.network - Network name ('mumbai', 'polygon', 'localhost')
      * @param {string} [config.rpcUrl] - Optional RPC URL
@@ -143,5 +145,3 @@ class FaceGuard {
         return hashEncoding(encoding);
     }
 }
-
-module.exports = { FaceGuard };

@@ -1,10 +1,10 @@
-const { expect } = require("chai");
-const { FaceGuard } = require("../src/FaceGuard");
-const { hashEncoding } = require("../src/utils");
+import { expect } from "chai";
+import { VFace } from "../src/VFace.js";
+import { hashEncoding } from "../src/utils.js";
 
 // Mock ethers for testing without a full blockchain connection
 // In a real integration test, we would connect to Hardhat
-describe("FaceGuard SDK", function () {
+describe("V-Face SDK", function () {
 
     describe("Utils", function () {
         it("should hash an encoding correctly", function () {
@@ -21,11 +21,11 @@ describe("FaceGuard SDK", function () {
         });
     });
 
-    describe("FaceGuard Class", function () {
+    describe("VFace Class", function () {
         let sdk;
 
         before(function () {
-            sdk = new FaceGuard({ network: "localhost" });
+            sdk = new VFace({ network: "localhost" });
         });
 
         it("should initialize with default config", function () {
