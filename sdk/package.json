@@ -1,0 +1,19 @@
+{
+    "name": "@faceguard/sdk",
+    "version": "0.1.0",
+    "description": "JavaScript SDK for the FaceGuard Protocol",
+    "main": "src/index.js",
+    "scripts": {
+        "test": "mocha test/**/*.test.js"
+    },
+    "author": "FaceGuard Contributors",
+    "license": "GPL-3.0",
+    "dependencies": {
+        "ethers": "^6.10.0",
+        "face-api.js": "^0.22.2"
+    },
+    "devDependencies": {
+        "chai": "^4.3.7",
+        "mocha": "^10.2.0"
+    }
+}
