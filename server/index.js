@@ -12,8 +12,30 @@ const { encryptEmbedding, decryptEmbedding } = require('./encryption');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// CORS: Allow Vercel frontends + localhost in dev
+const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    process.env.DASHBOARD_URL,
+    process.env.PLAYGROUND_URL,
+].filter(Boolean);
+
+app.use(cors({
+    origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, curl, etc.)
+        if (!origin || allowedOrigins.some(o => origin.startsWith(o))) {
+            callback(null, true);
+        } else {
+            callback(null, true); // Permissive for now — tighten in production
+        }
+    }
+}));
 app.use(bodyParser.json({ limit: '1mb' }));
+
+// Health check
+app.get('/', (req, res) => {
+    res.json({ status: 'ok', service: 'v-face-registry', version: '2.0.0' });
+});
 
 // --- Middleware: Rate Limiter ---
 const limiter = rateLimit({

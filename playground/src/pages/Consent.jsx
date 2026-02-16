@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { VFaceSDK } from '@v-face/sdk';
 
 const sdk = new VFaceSDK({
-    registryUrl: 'http://localhost:3000',
+    registryUrl: import.meta.env.VITE_REGISTRY_URL || 'http://localhost:3000',
     modelPath: '/model/mobilefacenet.onnx'
 });
 
