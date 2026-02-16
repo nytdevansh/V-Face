@@ -2,7 +2,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 
-const dbPath = process.env.DATABASE_PATH || path.resolve(__dirname, 'registry.db');
+const dbPath = process.env.DATABASE_PATH || path.resolve(__dirname, 'data', 'registry.db');
 
 // Ensure the directory exists before opening the DB
 const dbDir = path.dirname(dbPath);

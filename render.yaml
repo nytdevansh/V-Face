@@ -10,15 +10,10 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: DATABASE_PATH
-        value: /data/registry.db
       - key: VFACE_ENCRYPTION_KEY
         generateValue: true
       - key: DASHBOARD_URL
         value: https://v-face-dashboard.vercel.app
       - key: PLAYGROUND_URL
         value: https://v-face-playground.vercel.app
-    disk:
-      name: sqlite-data
-      mountPath: /data
-      sizeGB: 1
+
