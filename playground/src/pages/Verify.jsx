@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import Webcam from 'react-webcam';
-import { VFaceSDK, cosineSimilarity } from '@v-face/sdk';
+import { VFaceSDK } from '@v-face/sdk';
 import { useWallet } from '../context/WalletContext';
 
 const sdk = new VFaceSDK({
@@ -37,43 +37,46 @@ export default function Verify() {
             img.src = imgSrc;
             await new Promise(r => img.onload = r);
 
-            // 1. Get Fingerprint & Embedding
+            // 1. Get Fingerprint
             const fp = await sdk.getFingerprint(img);
-            // const embedding = await sdk.getRawEmbedding(img); // Not needed if we just fetch first
 
-            // 2. Lookup by Fingerprint (Hash)
-            // Note: This matches the "Strict Hash" vulnerability.
-            // If this fails, we can't get the encrypted vector easily without iterating or user input.
-            // For MVP + Robustness Test, we will try hash lookup first.
-            let res = await fetch('http://localhost:3000/check', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fingerprint: fp })
-            });
-            let data = await res.json();
+            // 2. Try exact hash lookup first
+            const checkResult = await sdk.check(fp);
 
-            // If found by hash -> Perfect Match
-            if (data.exists) {
+            if (checkResult.exists) {
                 setResult({
                     type: 'face',
                     matchType: 'EXACT_HASH',
                     similarity: 1.0,
-                    ...data
+                    found: true,
+                    fingerprint: fp,
+                    ...checkResult
                 });
                 return;
             }
 
-            // If NOT found by hash, we technically don't know who this is.
-            // In a real flow, the user would provide a Claimed Identity (e.g. Wallet Address).
-            // Then we fetch that record and compare.
-            // Let's fallback to "Hash Mismatch" for now, as we don't have a "Claim Identity" UI yet.
-            // But to demonstrate robustness, maybe we should fetch ALL records? 
-            // No, that's inefficient.
+            // 3. Fallback to similarity search
+            const searchResult = await sdk.search(img, 0.75);
 
-            // To properly test the robustness adjustment, we should update the UI to allow
-            // "Claim Address" input.
-
-            setResult({ type: 'face', found: false, fingerprint: fp, reason: 'Hash Mismatch (Strict)' });
+            if (searchResult.matches && searchResult.matches.length > 0) {
+                const best = searchResult.matches[0];
+                setResult({
+                    type: 'face',
+                    matchType: 'SIMILARITY',
+                    similarity: best.similarity,
+                    found: true,
+                    fingerprint: best.fingerprint,
+                    public_key: best.public_key,
+                    total_matches: searchResult.matches.length
+                });
+            } else {
+                setResult({
+                    type: 'face',
+                    found: false,
+                    fingerprint: fp,
+                    reason: 'No match found (hash or similarity)'
+                });
+            }
 
         } catch (err) {
             console.error(err);
@@ -92,20 +95,10 @@ export default function Verify() {
         try {
             const isToken = input.split('.').length === 3;
             if (isToken) {
-                const res = await fetch('http://localhost:3000/verify', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token: input })
-                });
-                const data = await res.json();
+                const data = await sdk.verifyToken(input);
                 setResult({ type: 'token', ...data });
             } else {
-                const res = await fetch('http://localhost:3000/check', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ fingerprint: input })
-                });
-                const data = await res.json();
+                const data = await sdk.check(input);
                 setResult({ type: 'fingerprint', ...data });
             }
         } catch (err) {
@@ -175,17 +168,20 @@ export default function Verify() {
                                             <div className="text-sm text-gray-300">
                                                 Similarity: <span className="font-mono text-white">{(result.similarity * 100).toFixed(2)}%</span>
                                             </div>
+                                            {result.total_matches > 1 && (
+                                                <div className="text-sm text-gray-300">
+                                                    Total Matches: <span className="font-mono text-cyan-400">{result.total_matches}</span>
+                                                </div>
+                                            )}
                                             <div className="mt-2 text-xs text-gray-500 font-mono break-all">
-                                                ID: {result.fingerprint.substring(0, 20)}...
+                                                ID: {result.fingerprint?.substring(0, 20)}...
                                             </div>
                                         </div>
                                     ) : (
                                         <div className="p-4 bg-red-900/20 border border-red-500/50 rounded-lg">
                                             <div className="text-red-400 font-bold text-lg mb-2">NO MATCH FOUND</div>
                                             <p className="text-sm text-gray-300">
-                                                Strict Hash Mismatch.
-                                                <br />
-                                                <span className="text-xs text-gray-500">(To test Similarity, we need 'Claimed Identity' flow)</span>
+                                                {result.reason}
                                             </p>
                                             <div className="mt-2 text-xs text-gray-500 font-mono break-all">
                                                 Generated: {result.fingerprint?.substring(0, 20)}...

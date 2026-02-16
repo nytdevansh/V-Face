@@ -1,8 +1,8 @@
-# FaceGuard Protocol v1.0
+# V-Face Protocol v1.0
 
 ## Abstract
 
-FaceGuard is an open protocol for biometric consent management in the age of generative AI. It enables individuals to register their facial biometric data on-chain, creating an immutable record of ownership that AI services can verify before processing images.
+V-Face is an open protocol for biometric consent management in the age of generative AI. It enables individuals to register their facial biometric data on-chain, creating an immutable record of ownership that AI services can verify before processing images.
 
 **Mission**: Ensure people maintain control over their digital identity by making unauthorized use of their likeness detectable and preventable.
 
@@ -15,7 +15,7 @@ With the rise of AI image generation, deepfakes, and facial manipulation tools, 
 - **Proprietary**: Lock-in, no interoperability  
 - **Reactive**: Detect misuse after it happens
 
-FaceGuard provides a **decentralized, open, and proactive** alternative.
+V-Face provides a **decentralized, open, and proactive** alternative.
 
 ---
 
@@ -178,12 +178,12 @@ interface IFaceRegistry {
 
 ### Threat Model
 
-**What FaceGuard protects against:**
+**What V-Face protects against:**
 ✅ Unauthorized use of someone's face in AI-generated content
 ✅ Deepfakes created without consent
 ✅ Facial manipulation by third parties
 
-**What FaceGuard does NOT protect against:**
+**What V-Face does NOT protect against:**
 ❌ Someone physically taking your photo (that's already possible)
 ❌ Using photos already published online (prior art problem)
 ❌ Determined adversaries with advanced techniques (always possible)
@@ -243,7 +243,7 @@ interface IFaceRegistry {
 - Small amount of crypto for gas (~$0.01 on Polygon)
 
 **Steps:**
-1. Visit registration app: `https://register.faceguard.org`
+1. Visit registration app: `https://app.v-face.org`
 2. Connect wallet
 3. Upload photo or take selfie
 4. Review and sign transaction
@@ -259,14 +259,14 @@ interface IFaceRegistry {
 
 **1. Install SDK**
 ```bash
-npm install @faceguard/sdk
+npm install @v-face/sdk
 ```
 
 **2. Initialize**
 ```javascript
-import { FaceGuard } from '@faceguard/sdk';
+import { VFaceSDK } from '@v-face/sdk';
 
-const guard = new FaceGuard({
+const sdk = new VFaceSDK({
   network: 'polygon',  // or 'ethereum', 'base', etc.
   rpcUrl: 'https://polygon-rpc.com'
 });
@@ -312,7 +312,7 @@ async function handleImageUpload(imageFile, userWallet) {
 **4. Optional: Show Badge**
 ```html
 <!-- Add to your site -->
-<img src="https://faceguard.org/badge.svg" alt="Protected by FaceGuard" />
+<img src="https://v-face.org/badge.svg" alt="Protected by V-Face" />
 ```
 
 ---
@@ -321,10 +321,10 @@ async function handleImageUpload(imageFile, userWallet) {
 
 ### Decision-Making Process
 
-FaceGuard is governed by the community through:
+V-Face is governed by the community through:
 
 1. **GitHub Discussions**: Propose changes
-2. **FaceGuard Improvement Proposals (FGPs)**: Formal specs
+2. **V-Face Improvement Proposals (VIPs)**: Formal specs
 3. **Voting**: Stakeholders vote on major changes
 4. **Implementation**: Changes merged by maintainers
 
@@ -428,10 +428,8 @@ We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md)
 
 ## Contact
 
-- GitHub: https://github.com/faceguard-protocol
-- Discord: https://discord.gg/faceguard
-- Email: hello@faceguard.org
-- Twitter: @faceguard_org
+- GitHub: https://github.com/nytdevansh/V-Face
+- Twitter: @v_face_org
 
 ---
 

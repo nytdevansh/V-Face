@@ -1,26 +1,28 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { ethers } from "ethers";
-import { VFace } from "@v-face/sdk";
+import { VFaceSDK, Registry } from "@v-face/sdk";
 
 const WalletContext = createContext();
 
 export const useWallet = () => useContext(WalletContext);
 
+// Initialize the Registry client (HTTP-based, no smart contracts)
+const registry = new Registry("http://localhost:3000");
+// Initialize the SDK (biometric pipeline + registry)
+const sdk = new VFaceSDK({
+    registryUrl: "http://localhost:3000",
+    modelPath: "/model/mobilefacenet.onnx",
+});
+
 export const WalletProvider = ({ children }) => {
     const [account, setAccount] = useState(null);
-    const [vFace, setVFace] = useState(null);
+    const [signer, setSigner] = useState(null);
     const [isConnecting, setIsConnecting] = useState(false);
     const [error, setError] = useState(null);
 
-    // Initialize FaceGuard SDK
+    // Auto-connect if already connected
     useEffect(() => {
-        const initSdk = async () => {
-            // Default to localhost for development, or use env var
-            // In production we'd detect network
-            const sdk = new VFace({ network: "localhost" });
-            setVFace(sdk);
-
-            // Auto-connect if already connected
+        const autoConnect = async () => {
             if (window.ethereum) {
                 const provider = new ethers.BrowserProvider(window.ethereum);
                 try {
@@ -34,7 +36,7 @@ export const WalletProvider = ({ children }) => {
             }
         };
 
-        initSdk();
+        autoConnect();
 
         // Listen for account changes
         if (window.ethereum) {
@@ -52,26 +54,15 @@ export const WalletProvider = ({ children }) => {
     const handleAccountsChanged = async (accounts) => {
         if (accounts.length === 0) {
             setAccount(null);
+            setSigner(null);
         } else {
-            const address = accounts[0].address || accounts[0]; // ethers v6 returns objects or strings depending on method
+            const address = accounts[0].address || accounts[0];
             setAccount(address);
 
-            // Update SDK with signer
             if (window.ethereum) {
                 const provider = new ethers.BrowserProvider(window.ethereum);
-                const signer = await provider.getSigner();
-
-                // We need to re-instantiate or connect the signer to the existing SDK instance
-                // SDK has a connect() method
-                setVFace(prev => {
-                    if (prev) {
-                        prev.connect(signer);
-                        return prev;
-                    }
-                    const newSdk = new VFace({ network: "localhost" });
-                    newSdk.connect(signer);
-                    return newSdk;
-                });
+                const s = await provider.getSigner();
+                setSigner(s);
             }
         }
     };
@@ -101,7 +92,9 @@ export const WalletProvider = ({ children }) => {
         <WalletContext.Provider
             value={{
                 account,
-                vFace,
+                signer,
+                sdk,
+                registry,
                 connectWallet,
                 isConnecting,
                 error,

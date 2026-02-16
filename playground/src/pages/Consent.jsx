@@ -1,4 +1,10 @@
 import React, { useState } from 'react';
+import { VFaceSDK } from '@v-face/sdk';
+
+const sdk = new VFaceSDK({
+    registryUrl: 'http://localhost:3000',
+    modelPath: '/model/mobilefacenet.onnx'
+});
 
 export default function Consent({ identity, onTokenIssued }) {
     const [loading, setLoading] = useState(false);
@@ -12,20 +18,15 @@ export default function Consent({ identity, onTokenIssued }) {
         }
 
         setLoading(true);
+        setError(null);
         try {
-            // 1. Simulate "Login with Face" -> Request Consent from Registry
-            const res = await fetch('http://localhost:3000/consent/request', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    fingerprint: identity.fingerprint,
-                    company_id: 'PLAYGROUND_DEMO',
-                    scope: ['auth:login', 'profile:read'],
-                    duration: 3600
-                })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error);
+            // Request consent via unified SDK
+            const data = await sdk.requestConsent(
+                identity.fingerprint,
+                'PLAYGROUND_DEMO',
+                ['auth:login', 'profile:read'],
+                3600
+            );
 
             setRequest(data);
         } catch (err) {
@@ -38,21 +39,10 @@ export default function Consent({ identity, onTokenIssued }) {
     const approveConsent = async () => {
         if (!request || !identity) return;
         setLoading(true);
+        setError(null);
         try {
-            // 2. Simulate User Approval on Device
-            const res = await fetch('http://localhost:3000/consent/approve', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    request_id: request.request_id,
-                    fingerprint: identity.fingerprint,
-                    company_id: 'PLAYGROUND_DEMO',
-                    scope: ['auth:login', 'profile:read']
-                })
-            });
-
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error);
+            // Approve consent via unified SDK
+            const data = await sdk.approveConsent(request.request_id, identity.fingerprint);
 
             onTokenIssued(data.token);
             alert("Consent Granted! Token Issued.");
@@ -87,7 +77,7 @@ export default function Consent({ identity, onTokenIssued }) {
                     </div>
                     <div className="flex justify-between">
                         <span className="text-gray-500 text-sm">Requested Scope</span>
-                        <span className="text-white font-mono text-sm">auth:login</span>
+                        <span className="text-white font-mono text-sm">auth:login, profile:read</span>
                     </div>
                 </div>
 
@@ -103,8 +93,11 @@ export default function Consent({ identity, onTokenIssued }) {
                     <div className="animate-in fade-in zoom-in duration-300">
                         <div className="p-6 bg-yellow-900/20 border border-yellow-500/50 rounded-xl mb-6">
                             <h3 className="text-yellow-400 font-bold mb-2">⚠️ Consent Request</h3>
-                            <p className="text-sm text-yellow-100/80 mb-4">
+                            <p className="text-sm text-yellow-100/80 mb-2">
                                 "Playground Demo" wants to access your identity for 1 hour.
+                            </p>
+                            <p className="text-xs text-gray-500 font-mono mb-4">
+                                Request ID: {request.request_id}
                             </p>
                             <div className="flex gap-4 justify-center">
                                 <button
@@ -115,9 +108,10 @@ export default function Consent({ identity, onTokenIssued }) {
                                 </button>
                                 <button
                                     onClick={approveConsent}
+                                    disabled={loading}
                                     className="px-6 py-2 bg-green-600 hover:bg-green-500 text-white font-bold rounded-lg shadow-lg"
                                 >
-                                    Approve Access
+                                    {loading ? 'Approving...' : 'Approve Access'}
                                 </button>
                             </div>
                         </div>

@@ -37,6 +37,17 @@ db.serialize(() => {
         nonce TEXT PRIMARY KEY,
         expires_at INTEGER NOT NULL
     )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS pending_consents (
+        request_id TEXT PRIMARY KEY,
+        fingerprint TEXT NOT NULL,
+        company_id TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        duration INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        status TEXT DEFAULT 'pending',
+        FOREIGN KEY(fingerprint) REFERENCES fingerprints(fingerprint)
+    )`);
 });
 
 module.exports = db;

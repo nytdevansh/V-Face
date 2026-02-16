@@ -1,12 +1,12 @@
 # 🚀 Quick Start Guide
 
-## You're 5 Minutes Away from Deploying FaceGuard!
+## You're 5 Minutes Away from Deploying V-Face!
 
 ### Step 1: Setup (2 minutes)
 
 ```bash
 # Navigate to the project
-cd faceguard-protocol
+cd V-Face
 
 # Install dependencies
 npm install
@@ -62,7 +62,7 @@ npm run deploy:testnet
 # 🔗 https://mumbai.polygonscan.com/address/0xABC...XYZ
 ```
 
-**That's it! You now have a working FaceGuard registry on testnet!** 🎉
+**That's it! You now have a working V-Face registry on testnet!** 🎉
 
 ---
 
@@ -108,7 +108,7 @@ npm run deploy:mainnet
 ## Project Structure
 
 ```
-faceguard-protocol/
+V-Face/
 ├── contracts/
 │   └── FaceRegistry.sol       ← The smart contract
 ├── scripts/
@@ -150,7 +150,7 @@ await contract.checkRegistration(hash); // Your address!
 
 Post on Twitter:
 ```
-🚀 Just deployed FaceGuard Protocol - an open-source system for biometric consent in AI!
+🚀 Just deployed V-Face — privacy-preserving biometric identity for AI agents & Web3!
 
 Contract: 0xYOUR_ADDRESS
 Network: Polygon Mumbai
@@ -185,7 +185,7 @@ Now build:
 
 - Open an issue on GitHub
 - Ask in Discord
-- Email: hello@faceguard.org
+- GitHub: https://github.com/nytdevansh/V-Face
 
 ---
 

@@ -8,7 +8,7 @@ V-Face is a consent infrastructure consisting of a client-side SDK for privacy-p
 ```mermaid
 sequenceDiagram
     participant User as User Device
-    participant SDK as FaceGuard SDK (in App)
+    participant SDK as V-Face SDK (in App)
     participant Registry as Registry API
     participant LLM as AI Company System
 

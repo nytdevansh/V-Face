@@ -1,8 +1,7 @@
 const hre = require("hardhat");
 
 async function main() {
-  console.log("🚀 Deploying FaceGuard Registry...\n");
-  console.log("🚀 Deploying V-Face Registry...");
+  console.log("🚀 Deploying V-Face Registry...\n");
 
   // Get the contract factory
   const VFaceRegistry = await hre.ethers.getContractFactory("VFaceRegistry");

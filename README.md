@@ -1,50 +1,43 @@
-# 🛡️ FaceGuard Protocol
-
-**Open protocol for biometric consent management in the age of AI**
-
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Solidity](https://img.shields.io/badge/Solidity-0.8.19-orange.svg)](https://soliditylang.org/)
-[![Hardhat](https://img.shields.io/badge/Built%20with-Hardhat-yellow.svg)](https://hardhat.org/)
-
-> **Mission**: Ensure people maintain control over their digital identity by making unauthorized use of their likeness detectable and preventable.
-
----
-
-# V-Face (Alpha)
+# 🔐 V-Face
 
 **Privacy-Preserving Biometric Identity for AI Agents & Web3**
 
-V-Face allows users to verify their physical identity without exposing raw biometric data to servers. It uses client-side embeddings and robust similarity matching to ensure privacy.
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Solidity](https://img.shields.io/badge/Solidity-0.8.19-orange.svg)](https://soliditylang.org/)
+[![SDK](https://img.shields.io/badge/SDK-0.1.0--alpha-green.svg)](./sdk)
+[![Hardhat](https://img.shields.io/badge/Built%20with-Hardhat-yellow.svg)](https://hardhat.org/)
 
-## Features (Alpha Release)
-- **Privacy First**: Embeddings are generated client-side and encrypted at rest.
-- **Robust Matching**: Uses Cosine Similarity with a tuned threshold (0.85) for accuracy.
-- **Registry Integration**: Decentralized identity registry (mock/local).
-- **Sybil Resistance**: Ensures one human = one account.
+> **Mission**: Allow users to verify their physical identity without exposing raw biometric data. Make unauthorized use of someone's likeness detectable and preventable.
 
-## Documentation
-- [Integration Guide](docs/integration-guide.md)
-- [False Positive Analysis](docs/false-positive-analysis.md)
-- [Example: LLM Guard](examples/llm_guard.js)
+---
 
-## Installation
+## ✨ What is V-Face?
 
-```bash
-npm install @v-face/sdk
-```
-### The Problem
+V-Face is a **consent infrastructure** that lets users own their facial identity across AI services and Web3 applications. It combines client-side biometric processing with a consent token system to ensure privacy.
 
-- ❌ AI can generate deepfakes without consent
-- ❌ Your face can be used in AI-generated content without permission
-- ❌ No easy way to prove ownership of your likeness
-- ❌ Existing solutions are centralized and proprietary
+### Core Principles
 
-### The Solution
+- 🧬 **Privacy First** — Face embeddings are generated client-side using MobileFaceNet (ONNX). Raw images and vectors never leave the user's device.
+- 🔒 **Irreversible Fingerprints** — Embeddings are L2-normalized, quantized, and SHA-256 hashed into a 64-char fingerprint that cannot reconstruct the original face.
+- 🎯 **Robust Matching** — Cosine similarity with a tuned 0.85 threshold for accurate verification.
+- 🪙 **Consent Tokens** — JWT-based tokens prove a user explicitly authorized an AI service to use their face for a specific purpose and duration.
+- ⛓️ **On-Chain Registry** — `VFaceRegistry.sol` on Polygon for immutable, censorship-resistant identity registration.
+- 🛡️ **Sybil Resistance** — One human = one identity.
 
-- ✅ **Decentralized registry** on blockchain (immutable, censorship-resistant)
-- ✅ **Privacy-first** (only hashes stored on-chain, not raw biometric data)
-- ✅ **Open protocol** (free to use, no API keys, no rate limits)
-- ✅ **Easy integration** for AI services (simple SDK)
+---
+
+## 📚 Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Architecture](docs/architecture.md) | System architecture & trust boundaries |
+| [Fingerprint Spec](docs/fingerprint_spec.md) | Fingerprint derivation algorithm (L2 → Quantize → SHA-256) |
+| [Consent Token Spec](docs/token_spec.md) | JWT consent token format & lifecycle |
+| [Threat Model](docs/threat_model.md) | Security analysis & attack mitigations |
+| [Integration Guide](docs/integration-guide.md) | How to integrate V-Face SDK into your app |
+| [False Positive Analysis](docs/false-positive-analysis.md) | Similarity threshold analysis |
+| [Robustness Report](docs/robustness-report.md) | Adversarial input testing results |
+| [Protocol Spec](PROTOCOL.md) | Full protocol specification |
 
 ---
 
@@ -52,339 +45,292 @@ npm install @v-face/sdk
 
 ### Prerequisites
 
-- Node.js v16+ 
+- Node.js v16+
 - npm or yarn
-- A Web3 wallet (MetaMask)
-- Some testnet MATIC (get from [faucet](https://faucet.polygon.technology/))
+- A Web3 wallet (MetaMask) — for on-chain features
 
 ### Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/nytdevansh/faceguard-protocol
-cd faceguard-protocol
+git clone https://github.com/nytdevansh/V-Face
+cd V-Face
 
-# Install dependencies
+# Install root dependencies (smart contract tooling)
 npm install
+
+# Install SDK dependencies
+cd sdk && npm install && cd ..
+
+# Install server dependencies
+cd server && npm install && cd ..
 
 # Copy environment variables
 cp .env.example .env
-
-# Edit .env and add your private key
-nano .env
 ```
 
-### Running Tests
+### Run the Registry Server
 
 ```bash
-# Run all tests
+cd server
+node index.js
+# Registry API running on port 3000
+```
+
+### Run the Dashboard
+
+```bash
+cd dashboard
+npm install
+npm run dev
+# Dashboard available at http://localhost:5173
+```
+
+### Run Smart Contract Tests
+
+```bash
+# From project root
 npm test
-
-# Run tests with gas reporting
-REPORT_GAS=true npm test
-
-# Run tests with coverage
-npm run coverage
-```
-
-Expected output:
-```
-  FaceRegistry
-    Deployment
-      ✓ Should set the correct version
-      ✓ Should start with zero registrations
-    Registration
-      ✓ Should allow a user to register their face
-      ✓ Should prevent registering the same hash twice
-      ...
-  
-  33 passing (2s)
-```
-
-### Deploying to Testnet
-
-```bash
-# Deploy to Polygon Mumbai (testnet)
-npm run deploy:testnet
-```
-
-Expected output:
-```
-🚀 Deploying FaceGuard Registry...
-
-Deploying with account: 0x1234...5678
-Account balance: 1.5 MATIC
-
-✅ FaceRegistry deployed to: 0xABCD...EFGH
-📝 Network: mumbai
-⛽ Gas used: ~ 850000
-
-📊 Contract Info:
-   Version: 1.0.0
-   Total Registrations: 0
-
-🔗 Block Explorer:
-   https://mumbai.polygonscan.com/address/0xABCD...EFGH
-
-✨ Deployment complete!
-```
-
-### Deploying to Mainnet
-
-```bash
-# Deploy to Polygon Mainnet (costs ~$0.10)
-npm run deploy:mainnet
 ```
 
 ---
 
-## 📚 How It Works
+## 🧠 How It Works
 
-### 1. User Registers Face
+### 1. Registration (Client-Side)
 
 ```javascript
-// In user's browser or app
-import { FaceGuard, extractFaceEncoding } from '@faceguard/sdk';
+import { VFaceSDK } from '@v-face/sdk';
 
-// Initialize SDK
-const guard = new FaceGuard({ network: 'polygon' });
+const sdk = new VFaceSDK({
+    registryUrl: 'https://api.v-face.org',
+    modelPath: '/model/mobilefacenet.onnx'
+});
 
-// 1. Extract face encoding from photo
-// (Load models first if using in browser with face-api.js)
-const encoding = await extractFaceEncoding(photoFile);
+// Generate fingerprint and embedding from a face image
+const fingerprint = await sdk.getFingerprint(faceImage);   // 64-char hex hash
+const embedding = await sdk.getRawEmbedding(faceImage);     // Float32Array (128-d)
 
-// 2. Register on-chain
-// SDK handles hashing and transaction automatically
-await guard.register(encoding);
+// Register with the registry
+await fetch('/register', {
+    method: 'POST',
+    body: JSON.stringify({
+        fingerprint,
+        public_key: walletAddress,
+        embedding: JSON.stringify(Array.from(embedding))
+    })
+});
 ```
 
-### 2. AI Service Checks Registration
+### 2. Verification (Biometric Matching)
 
 ```javascript
-// In AI service's app
-import { FaceGuard } from '@faceguard/sdk';
+import { VFaceSDK, cosineSimilarity } from '@v-face/sdk';
 
-const guard = new FaceGuard({ network: 'polygon' });
+const sdk = new VFaceSDK({ registryUrl: 'http://localhost:3000' });
+const freshEmbedding = await sdk.getRawEmbedding(currentFaceImage);
 
-// User uploads photo
-async function handleImageUpload(photo, userWallet) {
-  // Extract encoding client-side
-  const encoding = await guard.extractEncoding(photo);
-  
-  // Check if registered (SDK hashes internally)
-  const owner = await guard.checkRegistration(encoding);
-  
-  if (owner && owner !== "0x0000000000000000000000000000000000000000") {
-    if (owner !== userWallet) {
-       // Face belongs to someone else!
-       alert('This face is registered. Please get consent from owner.');
-       return false;
-    }
-  }
-  
-  // Safe to proceed
-  return processWithAI(photo);
+// Fetch stored embedding for claimed identity
+const record = await fetch('/check', {
+    method: 'POST',
+    body: JSON.stringify({ fingerprint: claimedFingerprint })
+}).then(r => r.json());
+
+// Compare embeddings
+const storedEmbedding = new Float32Array(JSON.parse(record.embedding));
+const score = cosineSimilarity(freshEmbedding, storedEmbedding);
+
+if (score > 0.85) {
+    console.log('✅ Identity Verified');
+} else {
+    console.log('⛔ Biometric Mismatch');
 }
 ```
 
-### 3. Privacy Guarantee
+### 3. Consent Flow
 
-**What's on-chain:**
+```javascript
+// 1. AI Company requests consent
+const request = await fetch('/consent/request', {
+    method: 'POST',
+    body: JSON.stringify({
+        fingerprint, company_id: 'acme_ai',
+        scope: ['auth:login'], duration: 3600
+    })
+}).then(r => r.json());
+
+// 2. User approves → receives signed JWT consent token
+// 3. AI Company verifies token before processing
+const verification = await fetch('/verify', {
+    method: 'POST',
+    body: JSON.stringify({ token: consentToken })
+}).then(r => r.json());
 ```
-Hash: 0x3f5d8... → Owner: 0x1234...
+
+### 4. Privacy Architecture
+
+```
+User Device          Registry Server         Blockchain
+     │                      │                     │
+     │  Face Image          │                     │
+     │  ──(local)──►        │                     │
+     │  Embedding (128-d)   │                     │
+     │  ──(local)──►        │                     │
+     │  Fingerprint (hash)  │                     │
+     │  ─────────────────►  │                     │
+     │                      │  Register(hash)     │
+     │                      │  ──────────────────►│
+     │                      │                     │
 ```
 
-**What's NOT on-chain:**
-- ❌ Your photo
-- ❌ Your face encoding (128-d vector)
-- ❌ Any personal information
-
-**The photo and encoding never leave your device!**
+**What's stored on-chain:** `Hash → Owner address`
+**What's NOT on-chain:** ❌ Photos, ❌ Embeddings, ❌ Personal info
 
 ---
 
 ## 🏗️ Project Structure
 
 ```
-faceguard-protocol/
+V-Face/
 ├── contracts/
-│   └── FaceRegistry.sol       # Main smart contract
+│   └── VFaceRegistry.sol        # Solidity smart contract (registration, consent, revocation)
+├── sdk/                          # @v-face/sdk — client-side biometric SDK
+│   ├── index.js                  # VFaceSDK class (getFingerprint, getRawEmbedding)
+│   ├── embedding/                # MobileFaceNet ONNX embedding pipeline
+│   ├── fingerprint/              # L2 → quantize → SHA-256 fingerprint derivation
+│   ├── registry/                 # Registry API client
+│   ├── token/                    # Consent token utilities
+│   ├── src/                      # Core VFace class & face extraction
+│   ├── demo_cli.js               # CLI demo: enrollment & verification
+│   └── test/                     # SDK unit tests & robustness tests
+├── server/                       # Express registry API server
+│   ├── index.js                  # REST API (register, check, revoke, consent, verify)
+│   ├── db.js                     # SQLite database layer
+│   ├── auth/                     # Authentication module
+│   ├── consent/                  # Consent management
+│   └── registry/                 # Registry logic
+├── dashboard/                    # React + Vite admin dashboard
+├── playground/                   # React + Vite demo/testing playground
+├── model/                        # MobileFaceNet ONNX model file
+├── docs/                         # Technical documentation
+│   ├── architecture.md           # System architecture & trust boundaries
+│   ├── fingerprint_spec.md       # Fingerprint algorithm specification
+│   ├── token_spec.md             # Consent token (JWT) specification
+│   ├── threat_model.md           # Threat model & security analysis
+│   ├── integration-guide.md      # SDK integration guide
+│   ├── false-positive-analysis.md
+│   └── robustness-report.md      # Adversarial robustness testing
+├── examples/
+│   └── llm_guard.js              # Example: LLM biometric guard
 ├── scripts/
-│   └── deploy.js              # Deployment script
+│   └── deploy.js                 # Smart contract deployment
 ├── test/
-│   └── FaceRegistry.test.js   # Comprehensive tests
-├── PROTOCOL.md                # Full protocol specification
-├── hardhat.config.js          # Hardhat configuration
-├── package.json               # Dependencies
-└── README.md                  # This file
+│   └── VFaceRegistry.test.js     # Smart contract tests
+├── hardhat.config.js             # Hardhat configuration
+├── PROTOCOL.md                   # Full protocol specification
+├── CONTRIBUTING.md               # Contributor guide
+└── QUICKSTART.md                 # 5-minute setup guide
 ```
 
 ---
 
 ## 🔐 Security
 
-### Audit Status
+### Status
 
-⚠️ **This is alpha software. Smart contract has NOT been formally audited yet.**
+⚠️ **Alpha software. Smart contract has NOT been formally audited.**
 
-We welcome security researchers to review the code. Found a vulnerability? Please report to: security@faceguard.org
+We welcome security researchers to review the code. Found a vulnerability? Open an issue or contact us.
 
 ### Security Features
 
-- ✅ Only hashes stored on-chain (not raw biometric data)
+- ✅ Only fingerprint hashes stored on-chain (not biometric data)
+- ✅ Client-side embedding generation (images never sent to server)
+- ✅ Irreversible fingerprint derivation (SHA-256 of quantized vectors)
 - ✅ Owner can revoke registration at any time
 - ✅ First registration wins (prevents hijacking)
-- ✅ All actions emit events for transparency
-- ✅ Extensive test coverage (33 tests)
-- ✅ Custom errors for gas optimization
+- ✅ JWT consent tokens with audience binding, expiration, and nonce
+- ✅ Replay protection on revocation (timestamp + nonce validation)
+- ✅ Signature verification using ethers.js for secure operations
 
 ### Threat Model
 
-**What FaceGuard protects against:**
-- ✅ Unauthorized use of your likeness in AI content
-- ✅ Deepfakes created without consent
-- ✅ Someone claiming ownership of your face
-
-**What FaceGuard does NOT protect against:**
-- ❌ Someone physically photographing you (already possible)
-- ❌ Using publicly available photos (prior art)
-- ❌ Determined adversaries with unlimited resources
-
----
-
-## 💰 Cost Analysis
-
-### Testnet (Mumbai)
-- **Deploy contract**: FREE (using faucet)
-- **Register face**: FREE (using faucet)
-- **Check registration**: FREE (read operation)
-
-### Mainnet (Polygon)
-- **Deploy contract**: ~$0.10 (one-time)
-- **Register face**: ~$0.001-0.01 (per user)
-- **Check registration**: FREE (view function, no gas)
-- **Grant consent**: ~$0.001-0.01
-- **Revoke**: ~$0.001-0.01
-
-**Total to get started: Under $1** 🎉
-
----
-
-## 🛠️ Development
-
-### Running Local Node
-
-```bash
-# Start local Hardhat node
-npx hardhat node
-
-# In another terminal, deploy to local network
-npx hardhat run scripts/deploy.js --network localhost
-```
-
-### Interacting with Contract
-
-```javascript
-const hre = require("hardhat");
-
-async function main() {
-  const contract = await hre.ethers.getContractAt(
-    "FaceRegistry",
-    "0x5FbDB2315678afecb367f032d93F642f64180aa3" // Your deployed address
-  );
-  
-  // Check version
-  const version = await contract.VERSION();
-  console.log("Version:", version);
-  
-  // Register a face
-  const hash = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("test_encoding"));
-  await contract.register(hash);
-  
-  // Check registration
-  const owner = await contract.checkRegistration(hash);
-  console.log("Owner:", owner);
-}
-
-main();
-```
-
-### Adding New Features
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Write tests first (TDD approach)
-4. Implement the feature
-5. Ensure all tests pass (`npm test`)
-6. Submit a pull request
-
----
-
-## 🌍 Deployment Info
-
-### Supported Networks
-
-| Network | Chain ID | RPC URL | Status |
-|---------|----------|---------|--------|
-| Polygon Mumbai | 80001 | https://rpc-mumbai.maticvigil.com | ✅ Testnet |
-| Polygon Mainnet | 137 | https://polygon-rpc.com | ✅ Production |
-| Ethereum Mainnet | 1 | https://eth.llamarpc.com | 🔜 Coming Soon |
-
-### Deployed Contracts
-
-**Testnet (Mumbai)**:
-- Address: `TBD` (deploy with `npm run deploy:testnet`)
-- Explorer: https://mumbai.polygonscan.com/
-
-**Mainnet (Polygon)**:
-- Address: `TBD` (deploy with `npm run deploy:mainnet`)
-- Explorer: https://polygonscan.com/
+See [docs/threat_model.md](docs/threat_model.md) for full analysis, covering:
+- Model drift / fingerprint stability
+- Fingerprint reversal (inversion attacks)
+- SDK tampering
+- Man-in-the-middle & replay attacks
 
 ---
 
 ## 📜 Smart Contract API
 
-### Core Functions
+### `VFaceRegistry.sol` — Core Functions
 
-#### `register(bytes32 _encodingHash)`
-Register a face encoding hash.
-- **Parameters**: SHA256 hash of face encoding
-- **Access**: Anyone
-- **Cost**: ~$0.001-0.01 on Polygon
-- **Events**: Emits `FaceRegistered`
+| Function | Description | Cost |
+|----------|-------------|------|
+| `register(bytes32 hash)` | Register a face encoding hash | ~$0.001 on Polygon |
+| `checkRegistration(bytes32 hash)` | Check if face is registered | FREE (view) |
+| `grantConsent(bytes32 hash, address requester)` | Grant consent to an AI service | ~$0.001 |
+| `revoke(bytes32 hash)` | Revoke your registration | ~$0.001 |
+| `getRegistration(bytes32 hash)` | Get full registration details | FREE (view) |
+| `isActive(bytes32 hash)` | Check if registration is active | FREE (view) |
+| `getOwnerRegistrations(address owner)` | List all registrations by owner | FREE (view) |
 
-#### `checkRegistration(bytes32 _encodingHash)`
-Check if a face is registered.
-- **Parameters**: Hash to check
-- **Returns**: Owner address (or `0x0` if not registered)
-- **Access**: Anyone (view function)
-- **Cost**: FREE
+### Deploying
 
-#### `grantConsent(bytes32 _encodingHash, address _requester)`
-Grant consent for someone to use your face.
-- **Parameters**: Your hash, requester's address
-- **Access**: Only owner
-- **Events**: Emits `ConsentGranted`
+```bash
+# Deploy to Polygon Mumbai (testnet) — FREE with faucet
+npm run deploy:testnet
 
-#### `revoke(bytes32 _encodingHash)`
-Revoke your face registration.
-- **Parameters**: Your hash
-- **Access**: Only owner
-- **Events**: Emits `RegistrationRevoked`
+# Deploy to Polygon Mainnet — ~$0.10
+npm run deploy:mainnet
+```
 
-### View Functions
+---
 
-- `getOwnerRegistrations(address _owner)` - Get all hashes owned by an address
-- `getRegistration(bytes32 _encodingHash)` - Get full registration details
-- `isActive(bytes32 _encodingHash)` - Check if registration is active
-- `VERSION()` - Get contract version
-- `totalRegistrations()` - Get total active registrations
+## 🗺️ Roadmap
+
+### Phase 1: Foundation ✅ *Complete*
+- [x] Protocol specification
+- [x] Smart contract (`VFaceRegistry.sol`)
+- [x] Comprehensive contract tests
+- [x] Deployment scripts
+- [x] JavaScript SDK (`@v-face/sdk`)
+- [x] Registry server (Express + SQLite)
+- [x] Dashboard (React + Vite)
+- [x] Playground demo app
+- [x] Documentation (architecture, fingerprint spec, threat model, token spec, integration guide)
+- [x] Consent token system (JWT-based)
+- [x] LLM Guard example
+
+### Phase 2: Hardening 🔨 *In Progress*
+- [ ] Deploy to Polygon Mumbai testnet
+- [ ] Community security review
+- [ ] Improve fingerprint robustness (LSH fuzzy matching)
+- [ ] Encrypt stored embeddings at rest
+- [ ] End-to-end integration testing
+- [ ] Bug bounty program
+
+### Phase 3: Launch
+- [ ] Formal security audit
+- [ ] Deploy to Polygon mainnet
+- [ ] Publish `@v-face/sdk` to npm
+- [ ] Launch public registration app
+- [ ] Partner with AI services
+
+### Phase 4: Growth
+- [ ] Multi-chain support (Ethereum, Arbitrum)
+- [ ] Mobile SDKs (iOS, Android)
+- [ ] Browser extension
+- [ ] DAO governance
+- [ ] Academic partnerships
 
 ---
 
 ## 🤝 Contributing
 
-We welcome contributions! This is an open-source project for the public good.
+We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
 
 **Ways to contribute:**
 - 🐛 Report bugs
@@ -392,42 +338,6 @@ We welcome contributions! This is an open-source project for the public good.
 - 🔐 Security audits
 - 📝 Improve documentation
 - 💻 Submit code
-- 🌍 Translate
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
-
----
-
-## 🗺️ Roadmap
-
-### Phase 1: Foundation ✅ *Current Phase*
-- [x] Protocol specification
-- [x] Smart contract implementation
-- [x] Comprehensive tests
-- [x] Deployment scripts
-- [ ] JavaScript SDK
-- [ ] Documentation site
-
-### Phase 2: Testing (Q2 2024)
-- [ ] Deploy to testnet
-- [ ] Community security review
-- [ ] Bug bounty program
-- [ ] 10+ test integrations
-- [ ] 1,000+ test registrations
-
-### Phase 3: Launch (Q3 2024)
-- [ ] Formal security audit
-- [ ] Deploy to Polygon mainnet
-- [ ] Launch user-facing app
-- [ ] Partner with AI services
-- [ ] Media coverage
-
-### Phase 4: Growth (Q4 2024+)
-- [ ] Multi-chain support
-- [ ] Mobile SDKs
-- [ ] Browser extension
-- [ ] DAO governance
-- [ ] Academic partnerships
 
 ---
 
@@ -437,37 +347,17 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
 - **Protocol Specification**: CC BY-SA 4.0
 - **Documentation**: CC BY-SA 4.0
 
-**Why GPL?** We want to ensure the protocol remains free and open. Any modifications must also be open-sourced.
-
 ---
 
 ## 🙏 Acknowledgments
 
 Built with:
-- [Hardhat](https://hardhat.org/) - Ethereum development environment
-- [OpenZeppelin](https://openzeppelin.com/) - Secure smart contract library
-- [Polygon](https://polygon.technology/) - Scalable blockchain infrastructure
-- [face-api.js](https://github.com/justadudewhohacks/face-api.js) - Face recognition in browser
-
-Inspired by:
-- The right to privacy
-- Open-source ethos
-- Ethical AI development
-
----
-
-## 📞 Contact
-
-- **GitHub**: https://github.com/faceguard-protocol
-- **Discord**: https://discord.gg/faceguard
-- **Twitter**: @faceguard_org
-- **Email**: hello@faceguard.org
-
----
-
-## ⚖️ Legal
-
-This protocol is provided "as-is" without warranties. Use at your own risk. This is not legal advice. Consult a lawyer for your specific situation.
+- [Hardhat](https://hardhat.org/) — Ethereum development environment
+- [OpenZeppelin](https://openzeppelin.com/) — Secure smart contract patterns
+- [Polygon](https://polygon.technology/) — Scalable blockchain infrastructure
+- [MobileFaceNet](https://arxiv.org/abs/1804.07573) — Lightweight face recognition model
+- [ONNX Runtime](https://onnxruntime.ai/) — Cross-platform model inference
+- [face-api.js](https://github.com/justadudewhohacks/face-api.js) — Face detection in browser
 
 ---
 

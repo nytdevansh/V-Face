@@ -1,5 +1,5 @@
 {
-  "name": "faceguard-protocol",
+  "name": "v-face",
   "version": "1.0.0",
   "description": "Open protocol for biometric consent management",
   "main": "index.js",
@@ -18,7 +18,7 @@
     "ai",
     "consent"
   ],
-  "author": "FaceGuard Contributors",
+  "author": "V-Face Contributors",
   "license": "GPL-3.0",
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^3.0.0",

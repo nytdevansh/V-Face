@@ -91,7 +91,7 @@ export default function FaceScanner({ onCancel, onScanComplete }) {
 
             setProgress(70);
 
-            await registerFace(detection.descriptor);
+            const result = await registerFace(detection.descriptor);
 
             clearInterval(progressInterval);
             setProgress(100);
@@ -99,7 +99,7 @@ export default function FaceScanner({ onCancel, onScanComplete }) {
             // Show success animation before closing
             await new Promise(resolve => setTimeout(resolve, 1000));
 
-            onScanComplete();
+            onScanComplete(result?.fingerprint);
         } catch (err) {
             console.error("Scan failed", err);
             if (err.code === "ACTION_REJECTED") {

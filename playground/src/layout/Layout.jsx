@@ -20,13 +20,13 @@ export default function Layout({ children, activeTab, onTabChange }) {
                             </div>
                             <div className="hidden md:block">
                                 <div className="ml-10 flex items-baseline space-x-4">
-                                    {['Register', 'Verify'].map((tab) => (
+                                    {['Register', 'Verify', 'Consent', 'Inspect'].map((tab) => (
                                         <button
                                             key={tab}
                                             onClick={() => onTabChange(tab)}
                                             className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === tab
-                                                    ? 'bg-gray-800 text-white'
-                                                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                                                ? 'bg-gray-800 text-white'
+                                                : 'text-gray-300 hover:bg-gray-700 hover:text-white'
                                                 }`}
                                         >
                                             {tab}

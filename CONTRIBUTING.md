@@ -1,6 +1,6 @@
-# Contributing to FaceGuard Protocol
+# Contributing to V-Face
 
-First off, thank you for considering contributing to FaceGuard! This is a public good project, and we need people like you to make it successful. 🎉
+First off, thank you for considering contributing to V-Face! This is a public good project, and we need people like you to make it successful. 🎉
 
 ## 🌟 Ways to Contribute
 
@@ -24,7 +24,7 @@ Have an idea to improve the protocol?
 Security is critical for biometric data!
 - Review smart contract code
 - Look for vulnerabilities
-- Report privately to: security@faceguard.org
+- Report privately via GitHub Security Advisories
 - We appreciate responsible disclosure
 
 ### 4. **Write Code** 💻
@@ -73,8 +73,8 @@ Help us reach more people:
 
 ```bash
 # 1. Fork and clone
-git clone https://github.com/YOUR_USERNAME/faceguard-protocol
-cd faceguard-protocol
+git clone https://github.com/YOUR_USERNAME/V-Face
+cd V-Face
 
 # 2. Install dependencies
 npm install
@@ -233,7 +233,7 @@ npm run coverage
 - Exploit vulnerabilities for personal gain
 
 ### Reporting Process
-1. Email security@faceguard.org with details
+1. Report via GitHub Security Advisories with details
 2. We'll respond within 48 hours
 3. We'll work on a fix together
 4. We'll credit you in the fix announcement
@@ -243,7 +243,7 @@ npm run coverage
 
 ## 📊 Governance
 
-### FaceGuard Improvement Proposals (FGPs)
+### V-Face Improvement Proposals (VIPs)
 
 For major changes, we use a formal proposal process:
 
@@ -333,8 +333,8 @@ We appreciate all contributors!
 - #proposals: Governance
 
 ### Email
-- General: hello@faceguard.org
-- Security: security@faceguard.org
+- General: GitHub Discussions
+- Security: GitHub Security Advisories
 
 ---
 
@@ -372,4 +372,4 @@ Together, we're building a more ethical AI future. 🚀
 
 ---
 
-**Questions?** Open an issue or join our [Discord](https://discord.gg/faceguard)
+**Questions?** Open an issue on [GitHub](https://github.com/nytdevansh/V-Face)

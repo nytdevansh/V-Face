@@ -32,45 +32,23 @@ export default function Register({ onIdentityCreated }) {
             img.src = imgSrc;
             await new Promise(r => img.onload = r);
 
-            // 1. Generate Fingerprint & Embedding
+            // 1. Sign intent with wallet
             const fp = await sdk.getFingerprint(img);
-            const embedding = await sdk.getRawEmbedding(img);
             setFingerprint(fp);
-
-            // 2. Sign Fingerprint with Wallet
             const message = `Register Identity: ${fp}`;
             const signature = await signer.signMessage(message);
 
-            // 3. Register
-            const res = await fetch('http://localhost:3000/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    fingerprint: fp,
-                    public_key: account,
-                    embedding: JSON.stringify(Array.from(embedding)), // Store vector
-                    metadata: {
-                        source: 'playground_webcam',
-                        signature: signature,
-                        message: message
-                    }
-                })
+            // 2. Register via unified SDK (handles fingerprint + embedding + API call)
+            const result = await sdk.register(img, account, {
+                source: 'playground_webcam',
+                signature,
+                message
             });
-
-            const data = await res.json();
-
-            if (res.status === 409) {
-                setRegistered(true);
-                if (onIdentityCreated) onIdentityCreated({ fingerprint: fp, publicKey: account });
-                return;
-            }
-
-            if (!res.ok) throw new Error(data.error || 'Registration failed');
 
             setRegistered(true);
             if (onIdentityCreated) {
                 onIdentityCreated({
-                    fingerprint: fp,
+                    fingerprint: result.fingerprint,
                     publicKey: account
                 });
             }
@@ -203,14 +181,9 @@ export default function Register({ onIdentityCreated }) {
                                                     const messageString = JSON.stringify(message);
                                                     const signature = await signer.signMessage(messageString);
 
-                                                    const res = await fetch('http://localhost:3000/revoke', {
-                                                        method: 'POST',
-                                                        headers: { 'Content-Type': 'application/json' },
-                                                        body: JSON.stringify({ fingerprint, signature, message })
-                                                    });
+                                                    const res = await sdk.revoke(fingerprint, signature, message);
 
-                                                    const data = await res.json();
-                                                    if (!res.ok) throw new Error(data.error);
+                                                    if (!res.success) throw new Error('Revocation failed');
 
                                                     alert('Identity Revoked Successfully');
                                                     window.location.reload();

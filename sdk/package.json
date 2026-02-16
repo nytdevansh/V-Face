@@ -8,7 +8,7 @@
         "test": "mocha test/**/*.test.js",
         "robustness": "node test/run_robustness.js"
     },
-    "author": "FaceGuard Contributors",
+    "author": "V-Face Contributors",
     "license": "GPL-3.0",
     "dependencies": {
         "ethers": "^6.10.0",

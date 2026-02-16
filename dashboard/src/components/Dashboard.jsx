@@ -6,8 +6,8 @@ import FaceScanner from './FaceScanner';
 import VerificationModal from './VerificationModal';
 
 export default function Dashboard() {
-    const { account } = useWallet();
-    const { sdk } = useVFace();
+    const { account, signer } = useWallet();
+    const { sdk, registry } = useVFace();
     const [registrations, setRegistrations] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showScanner, setShowScanner] = useState(false);
@@ -19,23 +19,36 @@ export default function Dashboard() {
     });
 
     const fetchRegistrations = async () => {
-        if (!sdk || !account) return;
+        if (!registry || !account) return;
         setLoading(true);
         try {
-            const contract = await sdk._getContract(false);
-            const hashes = await contract.getOwnerRegistrations(account);
-            setRegistrations(hashes);
+            // Check if this wallet has a registered identity via the registry API
+            // Since the registry doesn't have a "list by owner" endpoint,
+            // we track registrations locally
+            const stored = JSON.parse(localStorage.getItem(`vface_registrations_${account}`) || '[]');
 
-            // Update stats
-            const active = hashes.filter(async (hash) => {
-                const res = await contract.getRegistration(hash);
-                return !res[2]; // not revoked
-            });
+            // Validate each stored registration against the registry
+            const validated = [];
+            for (const fp of stored) {
+                try {
+                    const result = await registry.check(fp);
+                    if (result.exists) {
+                        validated.push({
+                            fingerprint: fp,
+                            revoked: result.revoked || false,
+                            createdAt: result.createdAt,
+                        });
+                    }
+                } catch {
+                    // Fingerprint no longer in registry, skip
+                }
+            }
 
+            setRegistrations(validated);
             setStats({
-                totalRegistrations: hashes.length,
-                activeRegistrations: hashes.length, // Will be refined with actual check
-                lastActivity: hashes.length > 0 ? new Date() : null
+                totalRegistrations: validated.length,
+                activeRegistrations: validated.filter(r => !r.revoked).length,
+                lastActivity: validated.length > 0 ? new Date() : null
             });
         } catch (err) {
             console.error("Failed to fetch registrations", err);
@@ -46,9 +59,15 @@ export default function Dashboard() {
 
     useEffect(() => {
         fetchRegistrations();
-    }, [sdk, account]);
+    }, [registry, account]);
 
-    const handleScanComplete = () => {
+    const handleScanComplete = (fingerprint) => {
+        // Store the fingerprint locally for this wallet
+        const stored = JSON.parse(localStorage.getItem(`vface_registrations_${account}`) || '[]');
+        if (!stored.includes(fingerprint)) {
+            stored.push(fingerprint);
+            localStorage.setItem(`vface_registrations_${account}`, JSON.stringify(stored));
+        }
         setShowScanner(false);
         fetchRegistrations();
     };
@@ -100,12 +119,12 @@ export default function Dashboard() {
                         </div>
                     </div>
                     <div className="text-right">
-                        <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Network</p>
-                        <span className="text-purple-400 font-mono text-sm">POLYGON</span>
+                        <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Backend</p>
+                        <span className="text-purple-400 font-mono text-sm">REGISTRY API</span>
                     </div>
                     <div className="text-right">
-                        <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Gas</p>
-                        <span className="text-cyan-400 font-mono text-sm">~0.001</span>
+                        <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Encryption</p>
+                        <span className="text-cyan-400 font-mono text-sm">AES-256-GCM</span>
                     </div>
                 </div>
             </motion.div>
@@ -129,7 +148,7 @@ export default function Dashboard() {
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-40">
                     <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
-                    <p className="mt-6 text-gray-500 font-mono text-sm animate-pulse">ACCESSING BLOCKCHAIN...</p>
+                    <p className="mt-6 text-gray-500 font-mono text-sm animate-pulse">CONNECTING TO REGISTRY...</p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -162,7 +181,7 @@ export default function Dashboard() {
                                 <div className="text-6xl mb-6 opacity-20">∅</div>
                                 <h3 className="text-xl font-light text-white mb-4">No Digital Identity Found</h3>
                                 <p className="text-gray-500 max-w-md mx-auto mb-8 leading-relaxed">
-                                    Your biometric signature has not been hashed to the ledger.
+                                    Your biometric signature has not been registered to the V-Face Registry.
                                     Secure your sovereignty now.
                                 </p>
                                 <button
@@ -177,10 +196,10 @@ export default function Dashboard() {
                             </motion.div>
                         ) : (
                             <div className="space-y-4">
-                                {registrations.map((hash, i) => (
+                                {registrations.map((reg, i) => (
                                     <RegistrationCard
-                                        key={hash}
-                                        hash={hash}
+                                        key={reg.fingerprint}
+                                        registration={reg}
                                         index={i}
                                         onRefresh={fetchRegistrations}
                                     />
@@ -224,12 +243,12 @@ export default function Dashboard() {
                             }
                         />
                         <StatCard
-                            title="Reputation Score"
-                            value="100%"
+                            title="Encryption"
+                            value="AES-256"
                             delay={0.4}
                             icon={
                                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                                 </svg>
                             }
                             valueColor="text-cyan-400"
@@ -260,7 +279,7 @@ export default function Dashboard() {
                         <div className="p-6 bg-gradient-to-br from-cyan-900/10 to-transparent border border-cyan-500/20">
                             <h4 className="text-cyan-400 font-bold mb-2 text-sm uppercase">System Notice</h4>
                             <p className="text-xs text-gray-400 leading-relaxed mb-3">
-                                V-Face Protocol v1.0 is active. All interactions are cryptographically signed and immutable.
+                                V-Face Registry v2.0 with AES-256-GCM encryption and Sybil resistance is active.
                             </p>
                             <div className="flex items-center gap-2 text-xs text-cyan-400/60">
                                 <div className="w-1.5 h-1.5 bg-cyan-500 rounded-full animate-pulse" />
@@ -295,25 +314,12 @@ function StatCard({ title, value, delay, icon, valueColor = "text-white" }) {
     );
 }
 
-function RegistrationCard({ hash, index, onRefresh }) {
-    const { sdk } = useVFace();
-    const [details, setDetails] = useState(null);
+function RegistrationCard({ registration, index, onRefresh }) {
+    const { registry, signer } = useWallet();
     const [isRevoking, setIsRevoking] = useState(false);
     const [showDetails, setShowDetails] = useState(false);
-
-    useEffect(() => {
-        const fetchDetails = async () => {
-            if (!sdk) return;
-            const contract = await sdk._getContract(false);
-            const res = await contract.getRegistration(hash);
-            setDetails({
-                owner: res[0],
-                timestamp: new Date(Number(res[1]) * 1000),
-                revoked: res[2]
-            });
-        };
-        fetchDetails();
-    }, [sdk, hash]);
+    const { fingerprint, revoked, createdAt } = registration;
+    const timestamp = createdAt ? new Date(createdAt) : new Date();
 
     const handleRevoke = async () => {
         if (!confirm('Are you sure you want to revoke this identity? This action cannot be undone.')) {
@@ -322,8 +328,11 @@ function RegistrationCard({ hash, index, onRefresh }) {
 
         setIsRevoking(true);
         try {
-            // Implement revocation logic here
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Simulated delay
+            const message = { action: 'revoke', fingerprint, timestamp: Date.now() };
+            const messageString = JSON.stringify(message);
+            const signature = await signer.signMessage(messageString);
+
+            await registry.revoke(fingerprint, signature, message);
             alert('Identity revoked successfully');
             onRefresh();
         } catch (err) {
@@ -332,12 +341,6 @@ function RegistrationCard({ hash, index, onRefresh }) {
             setIsRevoking(false);
         }
     };
-
-    if (!details) {
-        return (
-            <div className="h-32 bg-white/5 animate-pulse border border-white/5" />
-        );
-    }
 
     return (
         <motion.div
@@ -355,14 +358,14 @@ function RegistrationCard({ hash, index, onRefresh }) {
                 <div className="flex justify-between items-start mb-4">
                     <div className="flex-1">
                         <div className="flex items-center space-x-3 mb-3">
-                            <div className={`w-2 h-2 ${details.revoked ? 'bg-red-500' : 'bg-cyan-500'} shadow-[0_0_10px_currentColor] rounded-full`} />
+                            <div className={`w-2 h-2 ${revoked ? 'bg-red-500' : 'bg-cyan-500'} shadow-[0_0_10px_currentColor] rounded-full`} />
                             <h3 className="font-mono text-lg text-white tracking-wider">
-                                {hash.slice(0, 8)}...{hash.slice(-6)}
+                                {fingerprint.slice(0, 8)}...{fingerprint.slice(-6)}
                             </h3>
                             <button
-                                onClick={() => navigator.clipboard.writeText(hash)}
+                                onClick={() => navigator.clipboard.writeText(fingerprint)}
                                 className="p-1 hover:bg-white/10 rounded transition-colors"
-                                title="Copy hash"
+                                title="Copy fingerprint"
                             >
                                 <svg className="w-4 h-4 text-gray-500 hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -374,13 +377,13 @@ function RegistrationCard({ hash, index, onRefresh }) {
                                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                 </svg>
-                                {details.timestamp.toLocaleDateString()}
+                                {timestamp.toLocaleDateString()}
                             </span>
                             <span className="flex items-center gap-1">
                                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
-                                {details.timestamp.toLocaleTimeString()}
+                                {timestamp.toLocaleTimeString()}
                             </span>
                             <span className="flex items-center gap-1">
                                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -388,7 +391,7 @@ function RegistrationCard({ hash, index, onRefresh }) {
                                 </svg>
                                 CONFIRMED
                             </span>
-                            {details.revoked && (
+                            {revoked && (
                                 <span className="text-red-500 flex items-center gap-1">
                                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -409,7 +412,7 @@ function RegistrationCard({ hash, index, onRefresh }) {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                         </button>
-                        {!details.revoked && (
+                        {!revoked && (
                             <button
                                 onClick={handleRevoke}
                                 disabled={isRevoking}
@@ -438,16 +441,16 @@ function RegistrationCard({ hash, index, onRefresh }) {
                             className="mt-4 pt-4 border-t border-white/10 space-y-2 text-xs font-mono text-gray-400"
                         >
                             <div className="flex justify-between">
-                                <span>Owner:</span>
-                                <span className="text-cyan-400">{details.owner.slice(0, 10)}...{details.owner.slice(-8)}</span>
+                                <span>Full Fingerprint:</span>
+                                <span className="text-purple-400 break-all">{fingerprint}</span>
                             </div>
                             <div className="flex justify-between">
-                                <span>Full Hash:</span>
-                                <span className="text-purple-400 break-all">{hash}</span>
+                                <span>Storage:</span>
+                                <span className="text-cyan-400">AES-256-GCM Encrypted</span>
                             </div>
                             <div className="flex justify-between">
-                                <span>Block Time:</span>
-                                <span>{details.timestamp.toISOString()}</span>
+                                <span>Registered:</span>
+                                <span>{timestamp.toISOString()}</span>
                             </div>
                         </motion.div>
                     )}

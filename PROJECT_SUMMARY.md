@@ -1,4 +1,4 @@
-# 🎯 FaceGuard Protocol - Project Summary
+# 🎯 V-Face - Project Summary
 
 ## What We Built
 
@@ -360,7 +360,7 @@ If you need help:
 1. Read the docs (they're comprehensive!)
 2. Open a GitHub issue
 3. Ask on Discord
-4. Email: hello@faceguard.org
+4. GitHub: https://github.com/nytdevansh/V-Face
 
 **Don't give up! You're building something meaningful.**
 
