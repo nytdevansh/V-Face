@@ -1,67 +1,62 @@
-# V-Face Threat Model & Linkability Analysis
+# V-Face Threat Model (v3.0 — Signed Log)
 
-## On-Chain Privacy
+## Data Exposure Summary
 
-### What's stored on-chain
-| Data | On-Chain? | Notes |
-|------|-----------|-------|
-| Raw face images | ❌ Never | Processed client-side only |
-| Face embeddings | ❌ Never | Encrypted at rest on server |
-| Biometric fingerprint | ❌ Never | Stays off-chain since v2.0 |
-| **Commitment** | ✅ Opaque | `SHA256(encrypted_blob ∥ nonce)` |
-| Owner address | ✅ | Wallet that anchored the commitment |
-
-### Commitment Unlinkability
-Each registration produces a unique commitment because:
-```
-commitment = SHA256(AES-256-GCM(embedding) || random_nonce_32_bytes)
-```
-- Same face → different encrypted blobs (AES-GCM uses random IV)
-- Different random nonce per registration
-- **Result**: Two commitments from the same face are computationally indistinguishable
+| Data | Location | Protection |
+|------|----------|------------|
+| Raw face images | Device only | Never transmitted |
+| Face embeddings | Server (encrypted) | AES-256-GCM, key rotation |
+| Biometric fingerprint | Server (hashed) | SHA-256, irreversible |
+| Commitment | Server + hash chain | SHA256(ciphertext ∥ nonce) |
+| Hash chain entries | Server DB | ECDSA-signed, append-only |
 
 ## Fingerprint Linkability
 
-### The Tradeoff
-
 | Mode | Sybil Resistance | Cross-Service Privacy |
 |------|-------------------|----------------------|
-| **Global** (no salt) | ✅ Strong — same face = same fingerprint everywhere | ❌ Services can collude to track users |
-| **Per-service** (with salt) | ⚠️ Within-service only | ✅ Different fingerprint per service |
+| **Global** (no salt) | ✅ Strong | ❌ Linkable across services |
+| **Per-service** (with salt) | ⚠️ Within-service | ✅ Unlinkable |
 
-### Current Default: Global
-V-Face currently uses **globally stable** fingerprints (no salt). This is acceptable because:
-1. The commitment scheme already provides on-chain unlinkability
-2. Off-chain fingerprints are only shared with the registry server, not between services
-3. Sybil resistance is the primary use case
-
-### Opt-In Per-Service Mode
-```javascript
-// Global (default) — same hash everywhere
-const fp = await generateFingerprint(embedding);
-
-// Per-service — different hash per service
-const fp = await generateFingerprint(embedding, "service-abc-salt");
-```
+**Default: Global.** Opt-in per-service via `generateFingerprint(embedding, salt)`.
 
 ## Attack Vectors
 
 ### 1. Server Compromise
-**Risk**: Attacker accesses encrypted embeddings  
-**Mitigation**: AES-256-GCM encryption at rest, key rotation via `key_rotation.js`
+**Risk**: Attacker reads encrypted embeddings  
+**Mitigation**: AES-256-GCM, key versioning, rotation via `key_rotation.js`
 
-### 2. Re-identification via Embedding
-**Risk**: Attacker with the encryption key can decrypt and compare embeddings  
-**Mitigation**: Key rotation, future envelope encryption with HSM/KMS
+### 2. Hash Chain Tampering
+**Risk**: Server operator modifies historical entries  
+**Detection**: Chain breaks — any entry modification changes all downstream hashes  
+**Mitigation**: Periodic public snapshot of root hash (website, GitHub, Twitter)
 
-### 3. Sybil Attack (Multiple Identities)
-**Risk**: Same person registers multiple times  
+### 3. Server Key Compromise
+**Risk**: Attacker can forge new entries  
+**Mitigation**: Key rotation, signed snapshots pinned to public records  
+**Future**: Multi-server witnesses, HSM-backed signing keys
+
+### 4. Sybil Attack
+**Risk**: Same person registers multiple identities  
 **Mitigation**: Cosine similarity check (threshold 0.92) before registration
 
-### 4. On-Chain Correlation
-**Risk**: Observer links multiple commitments to the same identity  
-**Mitigation**: Commitments are opaque and randomized; no on-chain linkability
-
 ### 5. Model Substitution
-**Risk**: Attacker replaces ONNX model to produce predictable embeddings  
-**Mitigation**: Model size check (≥1MB), SHA-256 hash verification, runtime dimension assertion
+**Risk**: Attacker replaces ONNX model for predictable embeddings  
+**Mitigation**: SHA-256 hash check, model size assertion (≥1MB), output dimension check
+
+### 6. Replay Attack
+**Risk**: Replaying old registration requests  
+**Mitigation**: Nonce-based replay protection, timestamp bounds (±300s)
+
+## Trust Model Comparison
+
+| Property | Blockchain (v2) | Signed Log (v3) |
+|----------|----------------|-----------------|
+| Gas cost | Required | None |
+| User wallet | Required | Not required |
+| Tamper-evident | ✅ (consensus) | ✅ (hash chain + signatures) |
+| Trustless | ✅ | ❌ (server-signed) |
+| Public audit | ✅ (explorer) | ✅ (`/chain/snapshot`) |
+| Cost per registration | ~112k gas | Zero |
+| User friction | Wallet + gas | None |
+
+For V-Face's use case (biometric identity for AI services), the signed log model provides **equivalent integrity guarantees** with zero user friction.

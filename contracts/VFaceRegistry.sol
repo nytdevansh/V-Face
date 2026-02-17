@@ -2,16 +2,14 @@
 pragma solidity ^0.8.19;
 
 /**
- * @title V-Face Registry
+ * @title V-Face Registry (DEPRECATED — v3.0 uses signed log)
  * @author V-Face Protocol Contributors
- * @notice Open protocol for privacy-preserving biometric consent management
+ * @notice This contract is preserved for reference and optional on-chain anchoring.
+ *         As of v3.0, identity anchoring uses a server-signed hash chain (zero gas).
+ *         See server/hashchain.js and docs/architecture.md for the current architecture.
  * @dev Stores opaque commitments (SHA256 of encrypted biometric data || nonce).
  *      No raw biometric data or deterministic biometric hashes touch the chain.
- * 
- * Architecture (Hybrid Model):
- *   Client → encrypt(embedding) → Server stores encrypted blob
- *   Server → commitment = SHA256(encrypted_blob || nonce) → On-chain anchor
- * 
+ *
  * Security considerations:
  * - Only opaque commitments are stored (never biometric data or biometric-derived hashes)
  * - Commitments are unlinkable: same face + different nonce → different commitment

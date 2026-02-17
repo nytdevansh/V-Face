@@ -4,10 +4,11 @@ const cors = require('cors');
 const db = require('./db');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
-const { ethers } = require('ethers');
+const HashChain = require('./hashchain');
 const rateLimit = require('express-rate-limit');
 const { body, validationResult } = require('express-validator');
 const { encryptEmbedding, decryptEmbedding } = require('./encryption');
+const matchingClient = require('./matching_client');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -80,13 +81,29 @@ const { privateKey, publicKey } = crypto.generateKeyPairSync('ec', {
 
 console.log("Server Public Key:\n", publicKey);
 
+// --- Hash Chain (v3.0) ---
+const chain = new HashChain(db, { privateKey, publicKey });
+
 // ============================================================================
 // ROUTES
 // ============================================================================
 
 // 1. Health Check
-app.get('/', (req, res) => {
-    res.json({ status: 'ok', service: 'V-Face Registry', version: '2.0.0', protocol: 'commitment-v2' });
+app.get('/', async (req, res) => {
+    let matchingStatus = 'unknown';
+    try {
+        const mHealth = await matchingClient.health();
+        matchingStatus = mHealth.status;
+    } catch { matchingStatus = 'unreachable'; }
+
+    res.json({
+        status: 'ok',
+        service: 'V-Face Registry',
+        version: '4.0.0',
+        protocol: 'signed-log',
+        architecture: 'microservices',
+        matching: matchingStatus,
+    });
 });
 
 // 2. Register Identity
@@ -103,30 +120,10 @@ app.post('/register', registerLimiter, [
 
     const { fingerprint, public_key, embedding, metadata } = req.body;
 
-    // Sybil resistance: check for similar embeddings before registering
-    if (embedding) {
-        try {
-            const embeddingVector = JSON.parse(embedding);
-            const sybilMatch = await findSimilarEmbedding(embeddingVector, 0.92);
-            if (sybilMatch) {
-                return res.status(409).json({
-                    error: 'Similar identity already registered (Sybil resistance)',
-                    match_fingerprint: sybilMatch.fingerprint,
-                    similarity: sybilMatch.similarity
-                });
-            }
-        } catch (e) {
-            // Embedding parse failed — skip Sybil check, proceed with registration
-            console.warn('Sybil check skipped — embedding parse error:', e.message);
-        }
-    }
-
-    // Encrypt embedding before storage
+    // Encrypt embedding for commitment derivation (stays on API server)
     const encryptedEmbedding = embedding ? encryptEmbedding(embedding) : null;
 
-    // Generate commitment for on-chain anchoring
-    // commitment = SHA256(encrypted_embedding || nonce)
-    // This is opaque and unlinkable — same face with different nonces → different commitments
+    // Generate commitment: SHA256(encrypted_embedding || nonce)
     let commitment = null;
     let commitmentNonce = null;
     if (encryptedEmbedding) {
@@ -136,10 +133,43 @@ app.post('/register', registerLimiter, [
             .digest('hex');
     }
 
+    // Enroll in matching service (Sybil check + Qdrant storage)
+    // The matching service decrypts, checks for duplicates, stores in Qdrant, zeroes memory
+    let matchingResult = null;
+    if (encryptedEmbedding) {
+        try {
+            matchingResult = await matchingClient.enroll(
+                fingerprint,
+                encryptedEmbedding,
+                public_key,
+                metadata
+            );
+        } catch (matchErr) {
+            // If matching service says duplicate (409), propagate it
+            if (matchErr.statusCode === 409) {
+                return res.status(409).json({ error: matchErr.message });
+            }
+            console.error('Matching service enrollment failed:', matchErr.message);
+            // Non-fatal: still register metadata, vector can be retried
+        }
+    }
+
+    // Append to hash chain (tamper-evident log)
+    let chainEntry = null;
+    if (commitment) {
+        try {
+            chainEntry = await chain.appendEntry(commitment, fingerprint);
+        } catch (chainErr) {
+            console.error('Hash chain append failed:', chainErr.message);
+        }
+    }
+
     const stmt = db.prepare(
-        'INSERT INTO fingerprints (fingerprint, public_key, embedding, commitment, commitment_nonce, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO fingerprints (fingerprint, public_key, embedding, commitment, commitment_nonce, chain_index, chain_signature, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
-    stmt.run(fingerprint, public_key, encryptedEmbedding, commitment, commitmentNonce, Date.now(), JSON.stringify(metadata || {}), function (err) {
+    const chainIndex = chainEntry ? chainEntry.index : null;
+    const chainSignature = chainEntry ? chainEntry.signature : null;
+    stmt.run(fingerprint, public_key, encryptedEmbedding, commitment, commitmentNonce, chainIndex, chainSignature, Date.now(), JSON.stringify(metadata || {}), function (err) {
         if (err) {
             if (err.message.includes('UNIQUE constraint failed')) {
                 return res.status(409).json({ error: 'Identity already registered' });
@@ -149,9 +179,11 @@ app.post('/register', registerLimiter, [
         res.json({
             success: true,
             id: this.lastID,
-            // Return commitment for on-chain anchoring
-            // Client or server can submit this as bytes32 to VFaceRegistry.register()
-            commitment: commitment ? '0x' + commitment : null
+            commitment,
+            chainIndex,
+            chainSignature: chainSignature || null,
+            entryHash: chainEntry ? chainEntry.entryHash : null,
+            vectorStored: !!matchingResult,
         });
     });
     stmt.finalize();
@@ -169,7 +201,7 @@ app.post('/check', [
 
     const { fingerprint } = req.body;
 
-    db.get('SELECT public_key, embedding, commitment, created_at, revoked, metadata FROM fingerprints WHERE fingerprint = ?', [fingerprint], (err, row) => {
+    db.get('SELECT public_key, embedding, commitment, chain_index, chain_signature, created_at, revoked, metadata FROM fingerprints WHERE fingerprint = ?', [fingerprint], (err, row) => {
         if (err) return res.status(500).json({ error: err.message });
 
         if (!row) {
@@ -192,7 +224,9 @@ app.post('/check', [
             public_key: row.public_key,
             createdAt: row.created_at,
             embedding: decryptedEmbedding,
-            commitment: row.commitment ? '0x' + row.commitment : null,
+            commitment: row.commitment,
+            chainIndex: row.chain_index,
+            chainSignature: row.chain_signature,
             metadata: JSON.parse(row.metadata || '{}')
         });
     });
@@ -234,13 +268,24 @@ app.post('/revoke', [
             if (identityRow.revoked) return res.status(409).json({ error: 'Identity already revoked' });
 
             try {
-                const recoveredAddress = ethers.verifyMessage(JSON.stringify(message), signature);
+                // Verify signature using the stored public key (PEM format)
+                const verify = crypto.createVerify('SHA256');
+                verify.update(JSON.stringify(message));
+                const isValid = verify.verify(identityRow.public_key, signature, 'hex');
 
-                if (recoveredAddress.toLowerCase() !== identityRow.public_key.toLowerCase()) {
+                if (!isValid) {
                     return res.status(403).json({ error: 'Signature invalid or does not match owner' });
                 }
 
-                // Commit revocation
+                // Revoke vector in matching service
+                try {
+                    await matchingClient.deleteVector(fingerprint);
+                } catch (e) {
+                    console.error('Matching service revocation failed:', e.message);
+                    // Non-fatal: continue with metadata revocation
+                }
+
+                // Commit revocation in metadata DB
                 db.serialize(() => {
                     const nonceStmt = db.prepare('INSERT INTO nonces (nonce, expires_at) VALUES (?, ?)');
                     nonceStmt.run(nonce, now + 300);
@@ -382,21 +427,21 @@ app.post('/verify', (req, res) => {
     }
 });
 
-// 8. Similarity Search (NEW)
-// POST /search { embedding, threshold? }
+// 8. Similarity Search (delegates to matching service → Qdrant HNSW)
+// POST /search { encrypted_embedding, threshold? }
 app.post('/search', [
-    body('embedding').isArray({ min: 1 }),
-    body('threshold').optional().isFloat({ min: 0, max: 1 })
+    body('encrypted_embedding').isString().notEmpty(),
+    body('threshold').optional().isFloat({ min: 0, max: 1 }),
+    body('top_k').optional().isInt({ min: 1, max: 100 }),
 ], async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { embedding, threshold = 0.85 } = req.body;
+    const { encrypted_embedding, threshold = 0.85, top_k = 1 } = req.body;
 
     try {
-        const matches = await findSimilarEmbeddings(embedding, threshold);
-        res.json({ matches, threshold, total_checked: matches._totalChecked });
-        delete matches._totalChecked;
+        const result = await matchingClient.search(encrypted_embedding, threshold, top_k);
+        res.json(result);
     } catch (err) {
         console.error('Search error:', err);
         res.status(500).json({ error: 'Search failed: ' + err.message });
@@ -404,92 +449,69 @@ app.post('/search', [
 });
 
 // ============================================================================
-// SIMILARITY SEARCH HELPERS
+// HASH CHAIN ENDPOINTS (v3.0 — replaces blockchain)
 // ============================================================================
 
-/**
- * Compute cosine similarity between two vectors.
- */
-function cosineSimilarity(a, b) {
-    if (a.length !== b.length) return 0;
-    let dot = 0, normA = 0, normB = 0;
-    for (let i = 0; i < a.length; i++) {
-        dot += a[i] * b[i];
-        normA += a[i] * a[i];
-        normB += b[i] * b[i];
+// 9. Chain Root — current chain tip (public, cacheable)
+app.get('/chain/root', async (req, res) => {
+    try {
+        const root = await chain.getRoot();
+        res.json(root);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
-    if (normA === 0 || normB === 0) return 0;
-    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
+});
 
-/**
- * Find all embeddings above a similarity threshold.
- * @param {number[]} queryEmbedding - Query vector
- * @param {number} threshold - Minimum cosine similarity
- * @returns {Promise<Array<{fingerprint: string, similarity: number, public_key: string}>>}
- */
-function findSimilarEmbeddings(queryEmbedding, threshold) {
-    return new Promise((resolve, reject) => {
-        db.all('SELECT fingerprint, public_key, embedding FROM fingerprints WHERE revoked = 0 AND embedding IS NOT NULL', [], (err, rows) => {
-            if (err) return reject(err);
+// 10. Chain Proof — inclusion proof for a specific entry
+app.get('/chain/proof/:index', async (req, res) => {
+    const index = parseInt(req.params.index, 10);
+    if (isNaN(index) || index < 1) {
+        return res.status(400).json({ error: 'Invalid index' });
+    }
 
-            const matches = [];
-            for (const row of rows) {
-                try {
-                    const decrypted = decryptEmbedding(row.embedding);
-                    const stored = JSON.parse(decrypted);
-                    const sim = cosineSimilarity(queryEmbedding, stored);
-
-                    if (sim >= threshold) {
-                        matches.push({
-                            fingerprint: row.fingerprint,
-                            public_key: row.public_key,
-                            similarity: Math.round(sim * 10000) / 10000
-                        });
-                    }
-                } catch (e) {
-                    // Skip corrupted/unparseable embeddings
-                    continue;
-                }
+    try {
+        const entry = await chain.getEntry(index);
+        if (!entry) {
+            return res.status(404).json({ error: 'Entry not found' });
+        }
+        res.json({
+            entry,
+            publicKey: publicKey,
+            verifyInstructions: {
+                step1: 'Recompute entryHash = SHA256(index|commitment|fingerprint|timestamp|prevHash)',
+                step2: 'Verify signature using the publicKey and entryHash',
+                step3: 'Verify prevHash matches the entryHash of the previous entry',
             }
-
-            // Sort by similarity descending
-            matches.sort((a, b) => b.similarity - a.similarity);
-            matches._totalChecked = rows.length;
-            resolve(matches);
         });
-    });
-}
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
-/**
- * Find a single similar embedding above threshold (for Sybil check).
- */
-function findSimilarEmbedding(queryEmbedding, threshold) {
-    return new Promise((resolve, reject) => {
-        db.all('SELECT fingerprint, embedding FROM fingerprints WHERE revoked = 0 AND embedding IS NOT NULL', [], (err, rows) => {
-            if (err) return reject(err);
+// 11. Chain Snapshot — full chain export for public audit
+app.get('/chain/snapshot', async (req, res) => {
+    try {
+        const snapshot = await chain.exportSnapshot();
+        res.json(snapshot);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
-            for (const row of rows) {
-                try {
-                    const decrypted = decryptEmbedding(row.embedding);
-                    const stored = JSON.parse(decrypted);
-                    const sim = cosineSimilarity(queryEmbedding, stored);
-
-                    if (sim >= threshold) {
-                        return resolve({
-                            fingerprint: row.fingerprint,
-                            similarity: Math.round(sim * 10000) / 10000
-                        });
-                    }
-                } catch (e) {
-                    continue;
-                }
-            }
-
-            resolve(null);
+// 12. Chain Verify — server self-verification of integrity
+app.get('/chain/verify', async (req, res) => {
+    try {
+        const result = await chain.verifyChain();
+        res.json({
+            ...result,
+            verifiedAt: new Date().toISOString(),
         });
-    });
-}
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Similarity search helpers removed — delegated to matching service (Qdrant HNSW)
 
 // ============================================================================
 // START SERVER

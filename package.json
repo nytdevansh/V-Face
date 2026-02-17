@@ -22,7 +22,9 @@
   "license": "GPL-3.0",
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^3.0.0",
-    "hardhat": "^2.19.0"
+    "hardhat": "^2.19.0",
+    "onnxruntime-node": "^1.24.1",
+    "sharp": "^0.34.5"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.0.0",
