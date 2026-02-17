@@ -17,28 +17,43 @@ module.exports = {
     hardhat: {
       chainId: 31337,
     },
-    
-    // Polygon Mumbai Testnet (FREE to deploy and test)
-    mumbai: {
-      url: process.env.MUMBAI_RPC_URL || "https://rpc-mumbai.maticvigil.com",
+
+    // World Chain Mainnet
+    worldchain: {
+      url: process.env.WORLDCHAIN_RPC_URL || "https://worldchain-mainnet.g.alchemy.com/v2/oHKQAgyOJxRkGsNzaV68K",
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
-      chainId: 80001,
-      gasPrice: 20000000000, // 20 gwei
+      chainId: 480,
     },
-    
-    // Polygon Mainnet (production)
+
+    // World Chain Sepolia Testnet (FREE)
+    worldchain_sepolia: {
+      url: process.env.WORLDCHAIN_TESTNET_RPC_URL || "https://worldchain-sepolia.g.alchemy.com/v2/oHKQAgyOJxRkGsNzaV68K",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 4801,
+    },
+
+    // Polygon Mainnet (alternative)
     polygon: {
       url: process.env.POLYGON_RPC_URL || "https://polygon-rpc.com",
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       chainId: 137,
-      gasPrice: 200000000000, // 200 gwei (adjust based on network)
     },
   },
   etherscan: {
     apiKey: {
+      worldchain: process.env.WORLDSCAN_API_KEY || "",
       polygon: process.env.POLYGONSCAN_API_KEY || "",
-      polygonMumbai: process.env.POLYGONSCAN_API_KEY || "",
     },
+    customChains: [
+      {
+        network: "worldchain",
+        chainId: 480,
+        urls: {
+          apiURL: "https://api.worldscan.org/api",
+          browserURL: "https://worldscan.org",
+        },
+      },
+    ],
   },
   paths: {
     sources: "./contracts",

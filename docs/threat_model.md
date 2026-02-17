@@ -1,50 +1,67 @@
-# Threat Model & Security Analysis
+# V-Face Threat Model & Linkability Analysis
 
-## 1. Assets
-- **User Privacy**: The raw biometric data (face image/vector) of the user.
-- **Consent Integrity**: The assurance that a token represents true user intent.
-- **System Availability**: The ability for the Registry to process requests.
+## On-Chain Privacy
 
-## 2. Adversaries
-- **Rogue AI Company**: Wants to use user faces without consent or for unauthorized purposes.
-- **External Attacker**: Wants to steal identities or disrupt the service.
-- **Malicious User**: Wants to effectively "DOS" the system with fake registrations.
+### What's stored on-chain
+| Data | On-Chain? | Notes |
+|------|-----------|-------|
+| Raw face images | ❌ Never | Processed client-side only |
+| Face embeddings | ❌ Never | Encrypted at rest on server |
+| Biometric fingerprint | ❌ Never | Stays off-chain since v2.0 |
+| **Commitment** | ✅ Opaque | `SHA256(encrypted_blob ∥ nonce)` |
+| Owner address | ✅ | Wallet that anchored the commitment |
 
-## 3. Attack Vectors & Mitigations
+### Commitment Unlinkability
+Each registration produces a unique commitment because:
+```
+commitment = SHA256(AES-256-GCM(embedding) || random_nonce_32_bytes)
+```
+- Same face → different encrypted blobs (AES-GCM uses random IV)
+- Different random nonce per registration
+- **Result**: Two commitments from the same face are computationally indistinguishable
 
-### 3.1 Model Drift / Stability
-**Threat**: The user registers today. Next week, lighting changes, simple quantization produces a different fingerprint. Access Denied.
-**Mitigation**:
-- **Preprocessing**: Strict alignment and normalization.
-- **UX**: "Update Face ID" flow if verification fails but user can authenticate via other means (e.g., Email/Wallet).
-- **Future**: LSH (Locality Sensitive Hashing) to allow fuzzy matching in the privacy-preserving domain.
+## Fingerprint Linkability
 
-### 3.2 Fingerprint Reversal (Inversion Attack)
-**Threat**: Attacker gets the Registry database (fingerprints) and reconstructs the original faces.
-**Mitigation**:
-- **One-Way Process**: Embedding -> Quantize -> Hash.
-- **Information Loss**: Quantization discards precise details needed for high-fidelity reconstruction.
-- **Defense in Depth**: Registry does not store the quantization vector, only the *hash* of the vector. Providing the hash reveals nothing about the vector structure without brute-forcing the entire 512-d float space (infeasible).
+### The Tradeoff
 
-### 3.3 SDK Tampering
-**Threat**: Rogue Company modifies the SDK to bypass the "Request Consent" step and simply says "Authorized".
-**Mitigation**:
-- **Server-Side Verification**: The *Token* is signed by the Registry. The Company's backend (LLM) must verify the signature. A modified SDK cannot forge a valid Registry signature.
-- **Trust Anchor**: The LLM/Service refuses to process a face unless accompanied by a valid, signed token for that specific fingerprint.
+| Mode | Sybil Resistance | Cross-Service Privacy |
+|------|-------------------|----------------------|
+| **Global** (no salt) | ✅ Strong — same face = same fingerprint everywhere | ❌ Services can collude to track users |
+| **Per-service** (with salt) | ⚠️ Within-service only | ✅ Different fingerprint per service |
 
-### 3.4 Middle-Man Attack (Relay)
-**Threat**: Attacker intercepts a valid token for "User A" and sends it to "Company B".
-**Mitigation**:
-- **Audience Binding**: Token contains `aud: company_id`.
-- **Company B** will reject the token because `aud` does not match its ID.
+### Current Default: Global
+V-Face currently uses **globally stable** fingerprints (no salt). This is acceptable because:
+1. The commitment scheme already provides on-chain unlinkability
+2. Off-chain fingerprints are only shared with the registry server, not between services
+3. Sybil resistance is the primary use case
 
-### 3.5 Replay Attack
-**Threat**: Attacker captures a valid token and re-uses it later.
-**Mitigation**:
-- **Expiration**: Tokens have short `exp` times.
-- **Nonce**: Uses `jti` (JWT ID) to prevent re-submission of the exact same token if utilizing a stateful check.
+### Opt-In Per-Service Mode
+```javascript
+// Global (default) — same hash everywhere
+const fp = await generateFingerprint(embedding);
 
-## 4. Residual Risks
-- **Face Similarity Collisions**: Two different people producing the exact same quantized fingerprint.
-  - *Risk Level*: Low/Medium (MobileFaceNet is decent, but not SOTA state-of-the-art).
-  - *Mitigation*: User realizes they can't register because "already registered". System fails closed.
+// Per-service — different hash per service
+const fp = await generateFingerprint(embedding, "service-abc-salt");
+```
+
+## Attack Vectors
+
+### 1. Server Compromise
+**Risk**: Attacker accesses encrypted embeddings  
+**Mitigation**: AES-256-GCM encryption at rest, key rotation via `key_rotation.js`
+
+### 2. Re-identification via Embedding
+**Risk**: Attacker with the encryption key can decrypt and compare embeddings  
+**Mitigation**: Key rotation, future envelope encryption with HSM/KMS
+
+### 3. Sybil Attack (Multiple Identities)
+**Risk**: Same person registers multiple times  
+**Mitigation**: Cosine similarity check (threshold 0.92) before registration
+
+### 4. On-Chain Correlation
+**Risk**: Observer links multiple commitments to the same identity  
+**Mitigation**: Commitments are opaque and randomized; no on-chain linkability
+
+### 5. Model Substitution
+**Risk**: Attacker replaces ONNX model to produce predictable embeddings  
+**Mitigation**: Model size check (≥1MB), SHA-256 hash verification, runtime dimension assertion

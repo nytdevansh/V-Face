@@ -23,7 +23,10 @@ db.serialize(() => {
     db.run(`CREATE TABLE IF NOT EXISTS fingerprints (
         fingerprint TEXT PRIMARY KEY,
         public_key TEXT NOT NULL,
-        embedding TEXT, -- Encrypted or Base64 encoded vector
+        embedding TEXT, -- AES-256-GCM encrypted embedding vector
+        commitment TEXT, -- SHA256(encrypted_embedding || nonce) for on-chain anchoring
+        commitment_nonce TEXT, -- Random nonce used in commitment derivation
+        key_version INTEGER DEFAULT 1, -- Encryption key version used
         created_at INTEGER NOT NULL,
         revoked INTEGER DEFAULT 0,
         revoked_at INTEGER,

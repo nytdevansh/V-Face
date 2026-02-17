@@ -7,10 +7,16 @@ The V-Face Fingerprint is a privacy-preserving, deterministic identifier derived
 All implementations MUST use the exact same model and preprocessing pipeline to ensure the same input image yields the same float vector.
 
 ### 1.1 Model
-- **Architecture**: ArcFace MobileNet (v1/v2)
-- **Format**: ONNX
-- **Input Shape**: `112x112` RGB
-- **Output**: 128-dimensional float32 vector
+- **Architecture**: MobileFaceNet (MobileNetV2 backbone for face recognition)
+- **Source**: [foamliu/MobileFaceNet](https://github.com/foamliu/MobileFaceNet) (Apache-2.0)
+- **Format**: ONNX (opset 11)
+- **File**: `model/mobilefacenet.onnx`
+- **Input Shape**: `[1, 3, 112, 112]` — RGB 112×112 face crop
+- **Output Shape**: `[1, 128]` — 128-dimensional float32 embedding
+- **File Size**: ~3.8 MB
+- **SHA-256**: `85cdeb7368ed6a1e9cbaaa6f283c6b2439f1fa533c17450bfdc7f357d285d5d1`
+
+> ⚠️ **Version Lock**: Changing the model file will produce different embeddings, which means different fingerprints for the same face. This is a **breaking change**. All registered identities would need re-enrollment. Always verify the model hash before deployment.
 
 ### 1.2 Preprocessing Pipeline
 1.  **Face Detection**: Use `SSD MobileNet V1` (or equivalent lightweight detector) to find the bounding box.

@@ -22,19 +22,37 @@ const allowedOrigins = [
 
 app.use(cors({
     origin: (origin, callback) => {
-        // Allow requests with no origin (mobile apps, curl, etc.)
+        // Allow requests with no origin (mobile apps, curl, server-to-server)
         if (!origin || allowedOrigins.some(o => origin.startsWith(o))) {
             callback(null, true);
         } else {
-            callback(null, true); // Permissive for now — tighten in production
+            callback(new Error(`CORS: Origin ${origin} not allowed`), false);
         }
     }
 }));
 app.use(bodyParser.json({ limit: '1mb' }));
 
-// Health check
-app.get('/', (req, res) => {
-    res.json({ status: 'ok', service: 'v-face-registry', version: '2.0.0' });
+// --- Structured Request Logging ---
+app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+        const log = {
+            timestamp: new Date().toISOString(),
+            method: req.method,
+            path: req.path,
+            status: res.statusCode,
+            duration_ms: duration,
+            ip: req.ip,
+        };
+        // Log as JSON for structured log aggregation
+        if (res.statusCode >= 400) {
+            console.error(JSON.stringify(log));
+        } else {
+            console.log(JSON.stringify(log));
+        }
+    });
+    next();
 });
 
 // --- Middleware: Rate Limiter ---
@@ -44,6 +62,14 @@ const limiter = rateLimit({
     message: { error: 'Too many requests, please try again later.' }
 });
 app.use(limiter);
+
+// Stricter rate limit for registration (prevents Sybil spam)
+const registerLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5, // 5 registrations per 15 min per IP
+    message: { error: 'Registration rate limit exceeded. Try again later.' },
+    keyGenerator: (req) => req.ip, // Per-IP
+});
 
 // --- JWT Signing Keys (ES256) ---
 const { privateKey, publicKey } = crypto.generateKeyPairSync('ec', {
@@ -60,12 +86,12 @@ console.log("Server Public Key:\n", publicKey);
 
 // 1. Health Check
 app.get('/', (req, res) => {
-    res.json({ status: 'ok', service: 'V-Face Registry', version: '2.0.0' });
+    res.json({ status: 'ok', service: 'V-Face Registry', version: '2.0.0', protocol: 'commitment-v2' });
 });
 
 // 2. Register Identity
 // POST /register { fingerprint, public_key, embedding?, metadata? }
-app.post('/register', [
+app.post('/register', registerLimiter, [
     body('fingerprint').isString().isLength({ min: 64, max: 64 }).matches(/^[a-f0-9]+$/),
     body('public_key').isString().notEmpty(),
     body('embedding').optional().isString()
@@ -98,15 +124,35 @@ app.post('/register', [
     // Encrypt embedding before storage
     const encryptedEmbedding = embedding ? encryptEmbedding(embedding) : null;
 
-    const stmt = db.prepare('INSERT INTO fingerprints (fingerprint, public_key, embedding, created_at, metadata) VALUES (?, ?, ?, ?, ?)');
-    stmt.run(fingerprint, public_key, encryptedEmbedding, Date.now(), JSON.stringify(metadata || {}), function (err) {
+    // Generate commitment for on-chain anchoring
+    // commitment = SHA256(encrypted_embedding || nonce)
+    // This is opaque and unlinkable — same face with different nonces → different commitments
+    let commitment = null;
+    let commitmentNonce = null;
+    if (encryptedEmbedding) {
+        commitmentNonce = crypto.randomBytes(32).toString('hex');
+        commitment = crypto.createHash('sha256')
+            .update(encryptedEmbedding + commitmentNonce)
+            .digest('hex');
+    }
+
+    const stmt = db.prepare(
+        'INSERT INTO fingerprints (fingerprint, public_key, embedding, commitment, commitment_nonce, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+    stmt.run(fingerprint, public_key, encryptedEmbedding, commitment, commitmentNonce, Date.now(), JSON.stringify(metadata || {}), function (err) {
         if (err) {
             if (err.message.includes('UNIQUE constraint failed')) {
                 return res.status(409).json({ error: 'Identity already registered' });
             }
             return res.status(500).json({ error: err.message });
         }
-        res.json({ success: true, id: this.lastID });
+        res.json({
+            success: true,
+            id: this.lastID,
+            // Return commitment for on-chain anchoring
+            // Client or server can submit this as bytes32 to VFaceRegistry.register()
+            commitment: commitment ? '0x' + commitment : null
+        });
     });
     stmt.finalize();
 });
@@ -123,7 +169,7 @@ app.post('/check', [
 
     const { fingerprint } = req.body;
 
-    db.get('SELECT public_key, embedding, created_at, revoked, metadata FROM fingerprints WHERE fingerprint = ?', [fingerprint], (err, row) => {
+    db.get('SELECT public_key, embedding, commitment, created_at, revoked, metadata FROM fingerprints WHERE fingerprint = ?', [fingerprint], (err, row) => {
         if (err) return res.status(500).json({ error: err.message });
 
         if (!row) {
@@ -146,6 +192,7 @@ app.post('/check', [
             public_key: row.public_key,
             createdAt: row.created_at,
             embedding: decryptedEmbedding,
+            commitment: row.commitment ? '0x' + row.commitment : null,
             metadata: JSON.parse(row.metadata || '{}')
         });
     });

@@ -28,10 +28,12 @@ async function main() {
   console.log("   Total Registrations:", totalRegistrations.toString());
 
   console.log("\n🔗 Block Explorer:");
-  if (hre.network.name === "polygon") {
+  if (hre.network.name === "worldchain") {
+    console.log(`   https://worldscan.org/address/${address}`);
+  } else if (hre.network.name === "worldchain_sepolia") {
+    console.log(`   https://sepolia.worldscan.org/address/${address}`);
+  } else if (hre.network.name === "polygon") {
     console.log(`   https://polygonscan.com/address/${address}`);
-  } else if (hre.network.name === "mumbai") {
-    console.log(`   https://mumbai.polygonscan.com/address/${address}`);
   }
 
   console.log("\n✨ Deployment complete!\n");

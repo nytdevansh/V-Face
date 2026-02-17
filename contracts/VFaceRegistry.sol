@@ -4,35 +4,41 @@ pragma solidity ^0.8.19;
 /**
  * @title V-Face Registry
  * @author V-Face Protocol Contributors
- * @notice Open protocol for biometric consent management
- * @dev Stores hashed face encodings mapped to wallet addresses
+ * @notice Open protocol for privacy-preserving biometric consent management
+ * @dev Stores opaque commitments (SHA256 of encrypted biometric data || nonce).
+ *      No raw biometric data or deterministic biometric hashes touch the chain.
+ * 
+ * Architecture (Hybrid Model):
+ *   Client → encrypt(embedding) → Server stores encrypted blob
+ *   Server → commitment = SHA256(encrypted_blob || nonce) → On-chain anchor
  * 
  * Security considerations:
- * - Only hashes are stored (never raw biometric data)
- * - Owner can revoke registration at any time
- * - First registration wins (prevents hijacking)
- * - All actions emit events for transparency
+ * - Only opaque commitments are stored (never biometric data or biometric-derived hashes)
+ * - Commitments are unlinkable: same face + different nonce → different commitment
+ * - Owner can revoke registration at any time (right to be forgotten)
+ * - First registration wins (prevents commitment hijacking)
+ * - All actions emit events for transparency and auditability
  */
 contract VFaceRegistry {
     
     // ============ State Variables ============
     
     /// @notice Protocol version
-    string public constant VERSION = "1.0.0";
+    string public constant VERSION = "2.0.0";
     
     /// @notice Registration data structure
     struct Registration {
-        address owner;        // Wallet that owns this face (20 bytes)
+        address owner;        // Wallet that owns this identity (20 bytes)
         uint88 timestamp;     // When registered (11 bytes, max year ~3M+)
         bool revoked;         // Can be revoked by owner (1 byte)
-        // encodingHash is removed as it's the key of the mapping
+        // commitment is the key of the mapping, not stored in struct
         // Total: 32 bytes (1 storage slot)
     }
     
-    /// @notice Mapping of encoding hash to registration
+    /// @notice Mapping of commitment to registration
     mapping(bytes32 => Registration) public registry;
     
-    /// @notice Mapping of owner to their registered hashes
+    /// @notice Mapping of owner to their commitments
     mapping(address => bytes32[]) public ownerRegistrations;
     
     /// @notice Total number of active registrations
@@ -41,115 +47,116 @@ contract VFaceRegistry {
     // ============ Events ============
     
     /**
-     * @notice Emitted when a new face is registered
+     * @notice Emitted when a new identity commitment is registered
      * @param owner Wallet address of the owner
-     * @param encodingHash Hash of the face encoding
+     * @param commitment Opaque commitment hash (SHA256 of encrypted blob || nonce)
      * @param timestamp When the registration occurred
      */
-    event FaceRegistered(
+    event IdentityRegistered(
         address indexed owner,
-        bytes32 indexed encodingHash,
+        bytes32 indexed commitment,
         uint256 timestamp
     );
     
     /**
      * @notice Emitted when consent is granted
-     * @param owner Owner of the face
-     * @param requester Who is requesting to use the face
-     * @param encodingHash Which face encoding
+     * @param owner Owner of the identity
+     * @param requester Who is requesting to use the identity
+     * @param commitment Which identity commitment
      * @param timestamp When consent was granted
      */
     event ConsentGranted(
         address indexed owner,
         address indexed requester,
-        bytes32 indexed encodingHash,
+        bytes32 indexed commitment,
         uint256 timestamp
     );
     
     /**
      * @notice Emitted when a registration is revoked
      * @param owner Owner who revoked
-     * @param encodingHash Which face was revoked
+     * @param commitment Which identity commitment was revoked
      * @param timestamp When revoked
      */
     event RegistrationRevoked(
         address indexed owner,
-        bytes32 indexed encodingHash,
+        bytes32 indexed commitment,
         uint256 timestamp
     );
     
     // ============ Errors ============
     
-    error AlreadyRegistered(bytes32 encodingHash, address owner);
-    error NotRegistered(bytes32 encodingHash);
+    error AlreadyRegistered(bytes32 commitment, address owner);
+    error NotRegistered(bytes32 commitment);
     error NotOwner(address caller, address owner);
-    error AlreadyRevoked(bytes32 encodingHash);
-    error ZeroHash();
+    error AlreadyRevoked(bytes32 commitment);
+    error ZeroCommitment();
     
     // ============ Modifiers ============
     
-    modifier validHash(bytes32 _hash) {
-        if (_hash == bytes32(0)) revert ZeroHash();
+    modifier validCommitment(bytes32 _commitment) {
+        if (_commitment == bytes32(0)) revert ZeroCommitment();
         _;
     }
     
     // ============ Core Functions ============
     
     /**
-     * @notice Register a face encoding hash
-     * @param _encodingHash SHA256 hash of the face encoding (128-d vector)
-     * @dev First registration wins. Cannot re-register same hash.
+     * @notice Register an identity commitment
+     * @param _commitment Opaque commitment = SHA256(encrypted_embedding || nonce)
+     * @dev First registration wins. Cannot re-register same commitment.
      * 
-     * Example:
-     *   const encoding = await extractFaceEncoding(photo);
-     *   const hash = sha256(encoding.toString());
-     *   await contract.register(hash);
+     * The commitment is computed off-chain by the server:
+     *   1. Client sends face image → SDK extracts embedding
+     *   2. Server encrypts embedding with AES-256-GCM
+     *   3. Server generates random nonce (32 bytes)
+     *   4. commitment = SHA256(encrypted_blob || nonce)
+     *   5. Server or client submits commitment on-chain
+     * 
+     * This ensures the on-chain value is:
+     *   - Opaque (cannot derive biometric data)
+     *   - Unlinkable (same face → different commitments with different nonces)
+     *   - Tamper-evident (changing encrypted blob invalidates commitment)
      */
-    function register(bytes32 _encodingHash) 
+    function register(bytes32 _commitment) 
         external 
-        validHash(_encodingHash)
+        validCommitment(_commitment)
     {
         // Check if already registered
-        if (registry[_encodingHash].owner != address(0)) {
-            revert AlreadyRegistered(_encodingHash, registry[_encodingHash].owner);
+        if (registry[_commitment].owner != address(0)) {
+            revert AlreadyRegistered(_commitment, registry[_commitment].owner);
         }
         
         // Create registration
-        registry[_encodingHash] = Registration({
+        registry[_commitment] = Registration({
             owner: msg.sender,
             timestamp: uint88(block.timestamp),
             revoked: false
         });
         
         // Track owner's registrations
-        ownerRegistrations[msg.sender].push(_encodingHash);
+        ownerRegistrations[msg.sender].push(_commitment);
         
         // Increment counter
         totalRegistrations++;
         
         // Emit event
-        emit FaceRegistered(msg.sender, _encodingHash, block.timestamp);
+        emit IdentityRegistered(msg.sender, _commitment, block.timestamp);
     }
     
     /**
-     * @notice Check if a face encoding is registered
-     * @param _encodingHash Hash to check
+     * @notice Check if a commitment is registered
+     * @param _commitment Commitment to check
      * @return owner Address of the owner (address(0) if not registered or revoked)
      * @dev This is a view function - FREE to call (no gas)
-     * 
-     * Example:
-     *   const owner = await contract.checkRegistration(hash);
-     *   if (owner !== "0x0000...") {
-     *     // Face is registered!
-     *   }
      */
-    function checkRegistration(bytes32 _encodingHash) 
+    function checkRegistration(bytes32 _commitment) 
         external 
         view 
-        validHash(_encodingHash)
+        validCommitment(_commitment)
         returns (address owner) 
     {
-        Registration memory reg = registry[_encodingHash];
+        Registration memory reg = registry[_commitment];
         
         // Return address(0) if not registered or revoked
         if (reg.owner == address(0) || reg.revoked) {
@@ -160,20 +167,16 @@ contract VFaceRegistry {
     }
     
     /**
-     * @notice Grant consent for someone to use your face
-     * @param _encodingHash Your face encoding hash
+     * @notice Grant consent for someone to use your identity
+     * @param _commitment Your identity commitment
      * @param _requester Who is requesting consent
      * @dev Emits event that can be verified off-chain
-     * 
-     * Example use case:
-     *   AI service wants to use your face → you grant consent on-chain
-     *   Service verifies consent by checking event logs
      */
-    function grantConsent(bytes32 _encodingHash, address _requester) 
+    function grantConsent(bytes32 _commitment, address _requester) 
         external 
-        validHash(_encodingHash)
+        validCommitment(_commitment)
     {
-        Registration memory reg = registry[_encodingHash];
+        Registration memory reg = registry[_commitment];
         
         // Verify ownership
         if (reg.owner != msg.sender) {
@@ -182,32 +185,29 @@ contract VFaceRegistry {
         
         // Verify not revoked
         if (reg.revoked) {
-            revert AlreadyRevoked(_encodingHash);
+            revert AlreadyRevoked(_commitment);
         }
         
         // Emit consent event
         emit ConsentGranted(
             msg.sender, 
             _requester, 
-            _encodingHash, 
+            _commitment, 
             block.timestamp
         );
     }
     
     /**
-     * @notice Revoke your face registration (right to be forgotten)
-     * @param _encodingHash Your face encoding hash to revoke
-     * @dev Marks registration as revoked (doesn't delete for audit trail)
-     * 
-     * Example:
-     *   User wants to remove their face from the registry
-     *   await contract.revoke(hash);
+     * @notice Revoke your identity registration (right to be forgotten)
+     * @param _commitment Your identity commitment to revoke
+     * @dev Marks registration as revoked (doesn't delete for audit trail).
+     *      Off-chain: server should also delete encrypted embedding data.
      */
-    function revoke(bytes32 _encodingHash) 
+    function revoke(bytes32 _commitment) 
         external 
-        validHash(_encodingHash)
+        validCommitment(_commitment)
     {
-        Registration storage reg = registry[_encodingHash];
+        Registration storage reg = registry[_commitment];
         
         // Verify ownership
         if (reg.owner != msg.sender) {
@@ -216,7 +216,7 @@ contract VFaceRegistry {
         
         // Verify not already revoked
         if (reg.revoked) {
-            revert AlreadyRevoked(_encodingHash);
+            revert AlreadyRevoked(_commitment);
         }
         
         // Mark as revoked
@@ -226,15 +226,15 @@ contract VFaceRegistry {
         totalRegistrations--;
         
         // Emit event
-        emit RegistrationRevoked(msg.sender, _encodingHash, block.timestamp);
+        emit RegistrationRevoked(msg.sender, _commitment, block.timestamp);
     }
     
     // ============ View Functions ============
     
     /**
-     * @notice Get all registrations for an owner
+     * @notice Get all commitments for an owner
      * @param _owner Address to query
-     * @return Array of encoding hashes owned by this address
+     * @return Array of commitments owned by this address
      */
     function getOwnerRegistrations(address _owner) 
         external 
@@ -246,12 +246,12 @@ contract VFaceRegistry {
     
     /**
      * @notice Get full registration details
-     * @param _encodingHash Hash to query
+     * @param _commitment Commitment to query
      * @return owner Owner address
      * @return timestamp When registered
      * @return revoked Whether it's been revoked
      */
-    function getRegistration(bytes32 _encodingHash) 
+    function getRegistration(bytes32 _commitment) 
         external 
         view 
         returns (
@@ -260,21 +260,21 @@ contract VFaceRegistry {
             bool revoked
         ) 
     {
-        Registration memory reg = registry[_encodingHash];
+        Registration memory reg = registry[_commitment];
         return (reg.owner, reg.timestamp, reg.revoked);
     }
     
     /**
-     * @notice Check if a face is registered and active
-     * @param _encodingHash Hash to check
+     * @notice Check if an identity is registered and active
+     * @param _commitment Commitment to check
      * @return True if registered and not revoked
      */
-    function isActive(bytes32 _encodingHash) 
+    function isActive(bytes32 _commitment) 
         external 
         view 
         returns (bool) 
     {
-        Registration memory reg = registry[_encodingHash];
+        Registration memory reg = registry[_commitment];
         return reg.owner != address(0) && !reg.revoked;
     }
 }
