@@ -8,11 +8,12 @@ export const useWallet = () => useContext(WalletContext);
 
 // Initialize the Registry client (HTTP-based, no smart contracts)
 const REGISTRY_URL = import.meta.env.VITE_REGISTRY_URL || "http://localhost:3000";
+const MODEL_PATH = import.meta.env.VITE_MODEL_PATH || "/model/mobilefacenet.onnx";
 const registry = new Registry(REGISTRY_URL);
 // Initialize the SDK (biometric pipeline + registry)
 const sdk = new VFaceSDK({
     registryUrl: REGISTRY_URL,
-    modelPath: "/model/mobilefacenet.onnx",
+    modelPath: MODEL_PATH,
 });
 
 export const WalletProvider = ({ children }) => {

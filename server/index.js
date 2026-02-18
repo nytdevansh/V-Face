@@ -72,6 +72,21 @@ const registerLimiter = rateLimit({
     keyGenerator: (req) => req.ip, // Per-IP
 });
 
+// --- Serve Model File for Frontend ---
+const path = require('path');
+app.get('/model/mobilefacenet.onnx', (req, res) => {
+    try {
+        res.sendFile(path.join(__dirname, '../model/mobilefacenet.onnx'), {
+            headers: {
+                'Content-Type': 'application/octet-stream',
+                'Cache-Control': 'public, max-age=86400' // Cache for 1 day
+            }
+        });
+    } catch (err) {
+        res.status(404).json({ error: 'Model file not found' });
+    }
+});
+
 // --- JWT Signing Keys (ES256) ---
 const { privateKey, publicKey } = crypto.generateKeyPairSync('ec', {
     namedCurve: 'prime256v1',
