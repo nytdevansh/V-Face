@@ -9,11 +9,20 @@ export default defineConfig({
             fileName: (format) => `v-face-sdk.${format === 'es' ? 'module' : 'umd'}.js`
         },
         rollupOptions: {
-            external: ['onnxruntime-web', 'ethers'],
+            external: ['onnxruntime-web', 'ethers', 'fs', 'canvas'],
+            onwarn(warning, warn) {
+                // Suppress warnings about fs and canvas being externalized
+                if (warning.message?.includes('externalized for browser compatibility')) {
+                    return;
+                }
+                warn(warning);
+            },
             output: {
                 globals: {
                     'onnxruntime-web': 'ort',
-                    'ethers': 'ethers'
+                    'ethers': 'ethers',
+                    'fs': 'fs',
+                    'canvas': 'canvas'
                 }
             }
         },
