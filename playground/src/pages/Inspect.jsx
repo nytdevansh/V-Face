@@ -1,12 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { VFaceSDK } from '@v-face/sdk';
-
-const sdk = new VFaceSDK({
-    registryUrl: import.meta.env.VITE_REGISTRY_URL || 'http://localhost:3000',
-    modelPath: '/model/mobilefacenet.onnx'
-});
+import { useWallet } from '../context/WalletContext';
 
 export default function Inspect({ token }) {
+    const { sdk } = useWallet();
     const [verifyResult, setVerifyResult] = useState(null);
     const [verifying, setVerifying] = useState(false);
 

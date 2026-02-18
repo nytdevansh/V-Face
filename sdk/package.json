@@ -1,19 +1,68 @@
 {
-    "name": "@v-face/sdk",
+    "name": "v-face",
     "version": "0.1.0-alpha",
     "type": "module",
     "description": "Privacy-Preserving Biometric Identity for AI Agents",
     "main": "index.js",
+    "exports": {
+        ".": {
+            "import": "./index.js",
+            "types": "./index.d.ts"
+        },
+        "./setup": {
+            "import": "./setup.js",
+            "types": "./setup.d.ts"
+        },
+        "./embedding": {
+            "import": "./embedding/pipeline.js",
+            "types": "./embedding/pipeline.d.ts"
+        },
+        "./fingerprint": {
+            "import": "./fingerprint/index.js",
+            "types": "./fingerprint/index.d.ts"
+        },
+        "./registry": {
+            "import": "./registry/index.js",
+            "types": "./registry/index.d.ts"
+        }
+    },
+    "files": [
+        "index.js",
+        "index.d.ts",
+        "setup.js",
+        "setup.d.ts",
+        "embedding/",
+        "fingerprint/",
+        "registry/",
+        "README.md"
+    ],
     "scripts": {
         "test": "mocha test/**/*.test.js",
-        "robustness": "node test/run_robustness.js"
+        "test:integration": "mocha test/integration.test.js --timeout 10000",
+        "robustness": "node test/run_robustness.js",
+        "build": "vite build",
+        "build:types": "tsc --declaration --emitDeclarationOnly"
     },
+    "keywords": [
+        "biometric",
+        "privacy",
+        "consent",
+        "identity",
+        "web3",
+        "blockchain"
+    ],
     "author": "V-Face Contributors",
     "license": "GPL-3.0",
+    "engines": {
+        "node": ">=16.0.0"
+    },
     "dependencies": {
         "ethers": "^6.10.0",
-        "face-api.js": "^0.22.2",
         "onnxruntime-web": "^1.21.0"
+    },
+    "optionalDependencies": {
+        "canvas": "^2.11.2",
+        "face-api.js": "^0.22.2"
     },
     "devDependencies": {
         "chai": "^4.3.7",
@@ -21,9 +70,13 @@
         "jimp": "^0.22.10",
         "node-fetch": "^3.3.2",
         "canvas": "^2.11.2",
-        "@tensorflow/tfjs-node": "^4.22.0"
+        "@tensorflow/tfjs-node": "^4.22.0",
+        "vite": "^5.0.0",
+        "typescript": "^5.0.0",
+        "terser": "^5.24.0"
     },
     "directories": {
         "test": "test"
-    }
+    },
+    "types": "./index.d.ts"
 }

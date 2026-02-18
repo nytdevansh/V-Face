@@ -98,19 +98,45 @@ export async function generateEmbedding(imageSource) {
 /**
  * Converts image source to ONNX Tensor [1, 3, 112, 112]
  * Pipeline: Resize -> RGB Split -> Normalize -> Tensor
+ * Compatible with both browser (HTMLImageElement/Canvas) and Node.js (via canvas library)
  */
 async function preprocessImage(imageSource) {
     const width = MODEL_CONFIG.inputSize;
     const height = MODEL_CONFIG.inputSize;
 
-    // Draw to canvas to resize and get pixel data
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(imageSource, 0, 0, width, height);
+    let canvas, ctx, imageData;
 
-    const imageData = ctx.getImageData(0, 0, width, height);
+    // Node.js environment: use 'canvas' library
+    if (typeof window === 'undefined') {
+        const canvasModule = await import('canvas');
+        canvas = canvasModule.createCanvas(width, height);
+        ctx = canvas.getContext('2d');
+
+        // Handle different input types in Node.js
+        if (imageSource && typeof imageSource.buffers === 'object') {
+            // It's a canvas already
+            const imageCanvas = imageSource;
+            ctx.drawImage(imageCanvas, 0, 0, width, height);
+        } else if (imageSource && imageSource.data && typeof imageSource.data === 'object') {
+            // It's already ImageData
+            imageData = imageSource;
+        } else {
+            throw new Error('Node.js: imageSource must be a Canvas or ImageData object');
+        }
+    } else {
+        // Browser environment
+        canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        ctx = canvas.getContext('2d');
+        ctx.drawImage(imageSource, 0, 0, width, height);
+    }
+
+    // Get pixel data from canvas if we haven't already
+    if (!imageData && ctx) {
+        imageData = ctx.getImageData(0, 0, width, height);
+    }
+
     const { data } = imageData;
 
     // ONNX expects Planar format [1, 3, 112, 112] (Batch, Channel, Height, Width)

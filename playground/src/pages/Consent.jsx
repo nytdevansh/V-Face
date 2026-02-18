@@ -1,12 +1,8 @@
 import React, { useState } from 'react';
-import { VFaceSDK } from '@v-face/sdk';
-
-const sdk = new VFaceSDK({
-    registryUrl: import.meta.env.VITE_REGISTRY_URL || 'http://localhost:3000',
-    modelPath: '/model/mobilefacenet.onnx'
-});
+import { useWallet } from '../context/WalletContext';
 
 export default function Consent({ identity, onTokenIssued }) {
+    const { sdk } = useWallet();
     const [loading, setLoading] = useState(false);
     const [request, setRequest] = useState(null);
     const [error, setError] = useState(null);

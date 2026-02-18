@@ -1,16 +1,9 @@
 import React, { useState, useRef, useCallback } from 'react';
 import Webcam from 'react-webcam';
-import { VFaceSDK } from '@v-face/sdk';
 import { useWallet } from '../context/WalletContext';
 
-const sdk = new VFaceSDK({
-    registryUrl: import.meta.env.VITE_REGISTRY_URL || 'http://localhost:3000',
-    modelPath: '/model/mobilefacenet.onnx'
-});
-
-
 export default function Register({ onIdentityCreated }) {
-    const { isConnected, signer, account } = useWallet();
+    const { isConnected, signer, account, sdk } = useWallet();
     const webcamRef = useRef(null);
     const [imgSrc, setImgSrc] = useState(null);
     const [fingerprint, setFingerprint] = useState(null);

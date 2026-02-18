@@ -1,16 +1,10 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import Webcam from 'react-webcam';
-import { VFaceSDK } from '@v-face/sdk';
 import { useWallet } from '../context/WalletContext';
 
-const sdk = new VFaceSDK({
-    registryUrl: import.meta.env.VITE_REGISTRY_URL || 'http://localhost:3000',
-    modelPath: '/model/mobilefacenet.onnx'
-});
-
 export default function Verify() {
-    const { isConnected } = useWallet();
+    const { isConnected, sdk } = useWallet();
     const [mode, setMode] = useState('scan'); // 'scan' | 'manual'
     const [input, setInput] = useState('');
     const [result, setResult] = useState(null);

@@ -1,11 +1,22 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { ethers } from 'ethers';
+import { VFaceSDK, Registry } from '@v-face/sdk';
 
 const WalletContext = createContext();
 
 export function useWallet() {
     return useContext(WalletContext);
 }
+
+// Initialize Registry and SDK with environment variable
+const REGISTRY_URL = import.meta.env.VITE_REGISTRY_URL || 'http://localhost:3000';
+const MODEL_PATH = import.meta.env.VITE_MODEL_PATH || '/model/mobilefacenet.onnx';
+
+const registry = new Registry(REGISTRY_URL);
+const sdk = new VFaceSDK({
+    registryUrl: REGISTRY_URL,
+    modelPath: MODEL_PATH,
+});
 
 export function WalletProvider({ children }) {
     const [account, setAccount] = useState(null);
@@ -54,6 +65,8 @@ export function WalletProvider({ children }) {
         account,
         provider,
         signer,
+        sdk,
+        registry,
         connectWallet,
         error,
         isConnected: !!account
