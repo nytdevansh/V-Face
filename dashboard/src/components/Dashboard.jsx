@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWallet } from '../context/WalletContext';
 import Webcam from 'react-webcam';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -6,7 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 export default function Dashboard() {
     const { account, sdk, signer } = useWallet();
     const [activeTab, setActiveTab] = useState('register');
-    const webcamRef = React.useRef(null);
+    const registerWebcamRef = React.useRef(null);
+    const verifyWebcamRef = React.useRef(null);
     
     // Register state
     const [imgSrc, setImgSrc] = useState(null);
@@ -21,67 +22,134 @@ export default function Dashboard() {
     const [verifyFp, setVerifyFp] = useState(null);
 
     const capture = () => {
-        const imageSrc = webcamRef.current?.getScreenshot();
-        if (activeTab === 'register' && imageSrc) setImgSrc(imageSrc);
-        if (activeTab === 'verify' && imageSrc) setVerifyImg(imageSrc);
+        try {
+            const webcamRef = activeTab === 'register' ? registerWebcamRef : verifyWebcamRef;
+            const imageSrc = webcamRef.current?.getScreenshot();
+            if (!imageSrc) {
+                console.error('Failed to capture image from webcam');
+                setError('Failed to capture image. Check camera permissions.');
+                return;
+            }
+            if (activeTab === 'register') {
+                setImgSrc(imageSrc);
+            } else {
+                setVerifyImg(imageSrc);
+            }
+        } catch (err) {
+            console.error('Capture error:', err);
+            setError('Camera error: ' + (err.message || 'Unknown error'));
+        }
     };
 
+    // Check server connectivity on mount
+    useEffect(() => {
+        const checkServer = async () => {
+            try {
+                const registryUrl = import.meta.env.VITE_REGISTRY_URL || 'http://localhost:3000';
+                const response = await fetch(`${registryUrl}/health`, { timeout: 5000 });
+                if (!response.ok) {
+                    console.warn('Server health check failed:', response.status);
+                }
+            } catch (err) {
+                const registryUrl = import.meta.env.VITE_REGISTRY_URL || 'http://localhost:3000';
+                console.error('Could not connect to server at:', registryUrl);
+                console.error('Error:', err.message);
+                setError('⚠️ Cannot connect to server. Is it running at ' + registryUrl + '?');
+            }
+        };
+        checkServer();
+    }, []);
+
     const handleRegister = async () => {
-        if (!imgSrc || !account) return;
+        if (!imgSrc || !account) {
+            setError('No image captured or wallet not connected');
+            return;
+        }
         setLoading(true);
         setError(null);
         
         try {
-            if (!sdk) throw new Error("SDK not initialized");
+            if (!sdk) {
+                throw new Error("SDK not initialized. Check server connection.");
+            }
+
+            console.log('Initializing SDK...');
             await sdk.init();
 
+            console.log('Creating image element...');
             const img = new Image();
             img.src = imgSrc;
-            await new Promise(r => img.onload = r);
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = () => reject(new Error('Failed to load captured image'));
+            });
 
+            console.log('Generating fingerprint...');
             const fp = await sdk.getFingerprint(img);
+            if (!fp) throw new Error('Failed to generate fingerprint');
             setFingerprint(fp);
 
+            console.log('Requesting wallet signature...');
             const message = `Register Identity: ${fp}`;
             const signature = await signer.signMessage(message);
 
+            console.log('Registering with SDK...');
             const result = await sdk.register(img, account, {
                 source: 'dashboard_webcam',
                 signature,
                 message
             });
 
+            console.log('Registration result:', result);
             setRegistered(true);
+            setError(null);
         } catch (err) {
-            setError(err.message || 'Registration failed');
+            console.error('Registration error:', err);
+            setError(err.message || 'Registration failed. Check console for details.');
         } finally {
             setLoading(false);
         }
     };
 
     const handleVerify = async () => {
-        if (!verifyImg) return;
+        if (!verifyImg) {
+            setError('No image captured');
+            return;
+        }
         setLoading(true);
         setError(null);
 
         try {
-            if (!sdk) throw new Error("SDK not initialized");
+            if (!sdk) throw new Error("SDK not initialized. Check server connection.");
+            
+            console.log('Initializing SDK for verification...');
             await sdk.init();
 
+            console.log('Creating image element...');
             const img = new Image();
             img.src = verifyImg;
-            await new Promise(r => img.onload = r);
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = () => reject(new Error('Failed to load captured image'));
+            });
 
+            console.log('Generating fingerprint...');
             const fp = await sdk.getFingerprint(img);
+            if (!fp) throw new Error('Failed to generate fingerprint');
             setVerifyFp(fp);
 
+            console.log('Checking exact match...');
             const check = await sdk.check(fp);
             if (check.exists) {
+                console.log('Exact match found:', check);
                 setVerifyResult({ found: true, type: 'exact', ...check });
                 return;
             }
 
+            console.log('Searching for similarity matches...');
             const search = await sdk.search(img, 0.75);
+            console.log('Search results:', search);
+            
             if (search.matches?.length > 0) {
                 setVerifyResult({ 
                     found: true, 
@@ -93,20 +161,27 @@ export default function Dashboard() {
                 setVerifyResult({ found: false, type: 'none' });
             }
         } catch (err) {
-            setError(err.message || 'Verification failed');
+            console.error('Verification error:', err);
+            setError(err.message || 'Verification failed. Check console for details.');
+            setVerifyResult(null);
         } finally {
             setLoading(false);
         }
     };
 
     const handleRevoke = async () => {
-        if (!fingerprint) return;
+        if (!fingerprint) {
+            setError('No fingerprint to revoke');
+            return;
+        }
         if (!confirm('Revoke this identity? Cannot be undone.')) return;
 
         setLoading(true);
         setError(null);
 
         try {
+            if (!signer) throw new Error('Wallet not connected');
+            
             const message = {
                 action: 'revoke',
                 fingerprint,
@@ -114,7 +189,10 @@ export default function Dashboard() {
                 nonce: window.crypto.randomUUID()
             };
 
+            console.log('Requesting revoke signature...');
             const signature = await signer.signMessage(JSON.stringify(message));
+            
+            console.log('Revoking identity...');
             const res = await sdk.revoke(fingerprint, signature, message);
 
             if (res.success) {
@@ -122,9 +200,13 @@ export default function Dashboard() {
                 setRegistered(false);
                 setFingerprint(null);
                 setImgSrc(null);
+                setError(null);
+            } else {
+                setError(res.error || 'Revocation failed');
             }
         } catch (err) {
-            setError(err.message || 'Revocation failed');
+            console.error('Revocation error:', err);
+            setError(err.message || 'Revocation failed. Check console for details.');
         } finally {
             setLoading(false);
         }
@@ -195,7 +277,7 @@ export default function Dashboard() {
                             <h2 className="text-xl font-bold">1. Capture Face</h2>
                             <div className="aspect-video bg-black rounded-lg overflow-hidden border border-white/10">
                                 {!imgSrc ? (
-                                    <Webcam ref={webcamRef} audio={false} screenshotFormat="image/jpeg" className="w-full h-full" />
+                                    <Webcam ref={registerWebcamRef} audio={false} screenshotFormat="image/jpeg" className="w-full h-full" />
                                 ) : (
                                     <img src={imgSrc} alt="captured" className="w-full h-full object-cover" />
                                 )}
@@ -265,7 +347,7 @@ export default function Dashboard() {
                             <h2 className="text-xl font-bold">1. Scan Face</h2>
                             <div className="aspect-video bg-black rounded-lg overflow-hidden border border-white/10">
                                 {!verifyImg ? (
-                                    <Webcam ref={webcamRef} audio={false} screenshotFormat="image/jpeg" className="w-full h-full" />
+                                    <Webcam ref={verifyWebcamRef} audio={false} screenshotFormat="image/jpeg" className="w-full h-full" />
                                 ) : (
                                     <img src={verifyImg} alt="captured" className="w-full h-full object-cover" />
                                 )}

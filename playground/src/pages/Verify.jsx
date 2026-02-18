@@ -16,28 +16,49 @@ export default function Verify() {
     const [imgSrc, setImgSrc] = useState(null);
 
     const capture = useCallback(() => {
-        const imageSrc = webcamRef.current.getScreenshot();
-        setImgSrc(imageSrc);
+        try {
+            const imageSrc = webcamRef.current?.getScreenshot();
+            if (!imageSrc) {
+                setError('Failed to capture from webcam. Check camera permissions.');
+                return;
+            }
+            setImgSrc(imageSrc);
+            setError(null);
+        } catch (err) {
+            console.error('Capture error:', err);
+            setError('Camera error: ' + err.message);
+        }
     }, [webcamRef]);
 
     const handleVerifyFace = async () => {
-        if (!imgSrc) return;
+        if (!imgSrc) {
+            setError('No face captured');
+            return;
+        }
         setLoading(true);
         setResult(null);
         setError(null);
 
         try {
+            console.log('Creating image element...');
             const img = new Image();
             img.src = imgSrc;
-            await new Promise(r => img.onload = r);
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = () => reject(new Error('Failed to load image'));
+            });
 
             // 1. Get Fingerprint
+            console.log('Getting fingerprint...');
             const fp = await sdk.getFingerprint(img);
+            if (!fp) throw new Error('Failed to generate fingerprint');
 
             // 2. Try exact hash lookup first
+            console.log('Checking for exact match...');
             const checkResult = await sdk.check(fp);
 
             if (checkResult.exists) {
+                console.log('Exact match found:', checkResult);
                 setResult({
                     type: 'face',
                     matchType: 'EXACT_HASH',
@@ -50,10 +71,12 @@ export default function Verify() {
             }
 
             // 3. Fallback to similarity search
+            console.log('Searching for similar matches...');
             const searchResult = await sdk.search(img, 0.75);
 
             if (searchResult.matches && searchResult.matches.length > 0) {
                 const best = searchResult.matches[0];
+                console.log('Found similar match:', best);
                 setResult({
                     type: 'face',
                     matchType: 'SIMILARITY',
@@ -64,6 +87,7 @@ export default function Verify() {
                     total_matches: searchResult.matches.length
                 });
             } else {
+                console.log('No matches found');
                 setResult({
                     type: 'face',
                     found: false,
@@ -73,15 +97,18 @@ export default function Verify() {
             }
 
         } catch (err) {
-            console.error(err);
-            setError(err.message);
+            console.error('Verification error:', err);
+            setError(err.message || 'Verification failed. Check console for details.');
         } finally {
             setLoading(false);
         }
     };
 
     const handleCheckManual = async () => {
-        if (!input) return;
+        if (!input) {
+            setError('Please enter a fingerprint or token');
+            return;
+        }
         setLoading(true);
         setResult(null);
         setError(null);
@@ -89,14 +116,18 @@ export default function Verify() {
         try {
             const isToken = input.split('.').length === 3;
             if (isToken) {
+                console.log('Verifying token...');
                 const data = await sdk.verifyToken(input);
+                console.log('Token verified:', data);
                 setResult({ type: 'token', ...data });
             } else {
+                console.log('Checking fingerprint...');
                 const data = await sdk.check(input);
+                console.log('Fingerprint check result:', data);
                 setResult({ type: 'fingerprint', ...data });
             }
         } catch (err) {
-            console.error(err);
+            console.error('Check error:', err);
             setError(err.message);
         } finally {
             setLoading(false);

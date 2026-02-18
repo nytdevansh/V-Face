@@ -12,32 +12,55 @@ export default function Register({ onIdentityCreated }) {
     const [registered, setRegistered] = useState(false);
 
     const capture = useCallback(() => {
-        const imageSrc = webcamRef.current.getScreenshot();
-        setImgSrc(imageSrc);
+        try {
+            const imageSrc = webcamRef.current?.getScreenshot();
+            if (!imageSrc) {
+                setError('Failed to capture from webcam. Check camera permissions.');
+                return;
+            }
+            setImgSrc(imageSrc);
+            setError(null);
+        } catch (err) {
+            console.error('Capture error:', err);
+            setError('Camera error: ' + err.message);
+        }
     }, [webcamRef]);
 
     const handleRegister = async () => {
-        if (!imgSrc || !isConnected) return;
+        if (!imgSrc || !isConnected) {
+            setError('No image captured or wallet not connected');
+            return;
+        }
         setLoading(true);
         setError(null);
         try {
+            console.log('Creating image element...');
             const img = new Image();
             img.src = imgSrc;
-            await new Promise(r => img.onload = r);
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = () => reject(new Error('Failed to load image'));
+            });
 
             // 1. Sign intent with wallet
+            console.log('Getting fingerprint...');
             const fp = await sdk.getFingerprint(img);
+            if (!fp) throw new Error('Failed to generate fingerprint');
             setFingerprint(fp);
+            
+            console.log('Requesting wallet signature...');
             const message = `Register Identity: ${fp}`;
             const signature = await signer.signMessage(message);
 
             // 2. Register via unified SDK (handles fingerprint + embedding + API call)
+            console.log('Registering...');
             const result = await sdk.register(img, account, {
                 source: 'playground_webcam',
                 signature,
                 message
             });
 
+            console.log('Registration successful:', result);
             setRegistered(true);
             if (onIdentityCreated) {
                 onIdentityCreated({
@@ -46,8 +69,8 @@ export default function Register({ onIdentityCreated }) {
                 });
             }
         } catch (err) {
-            console.error(err);
-            setError(err.message);
+            console.error('Registration error:', err);
+            setError(err.message || 'Registration failed');
         } finally {
             setLoading(false);
         }
