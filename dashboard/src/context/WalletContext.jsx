@@ -82,8 +82,15 @@ export const WalletProvider = ({ children }) => {
 
     const connectWallet = async () => {
         if (!window.ethereum) {
-            window.open('https://metamask.io/download/', '_blank');
-            setError("MetaMask is not installed. Sending you to the download page...");
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            if (isMobile) {
+                const dappUrl = window.location.host + window.location.pathname;
+                window.location.href = `https://metamask.app.link/dapp/${dappUrl}`;
+                setError("Opening MetaMask app...");
+            } else {
+                window.open('https://metamask.io/download/', '_blank');
+                setError("MetaMask is not installed. Sending you to the download page...");
+            }
             return;
         }
 
@@ -107,8 +114,15 @@ export const WalletProvider = ({ children }) => {
             } else if (err.code === -32002) {
                 setError("Connection request already pending. Please check MetaMask.");
             } else if (err.message?.includes("not installed")) {
-                window.open('https://metamask.io/download/', '_blank');
-                setError("MetaMask is not installed. Sending you to the download page...");
+                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                if (isMobile) {
+                    const dappUrl = window.location.host + window.location.pathname;
+                    window.location.href = `https://metamask.app.link/dapp/${dappUrl}`;
+                    setError("Opening MetaMask app...");
+                } else {
+                    window.open('https://metamask.io/download/', '_blank');
+                    setError("MetaMask is not installed. Sending you to the download page...");
+                }
             } else {
                 setError(err.message || "Failed to connect wallet. Please try again.");
             }
