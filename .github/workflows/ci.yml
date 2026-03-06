@@ -36,6 +36,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Install root dependencies & compile Hardhat
+        working-directory: .
+        run: |
+          npm install
+          npx hardhat compile
       - run: npm install
       - run: npm test
 
@@ -96,6 +101,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Build SDK
+        working-directory: sdk
+        run: |
+          npm install
+          npm run build
       - run: npm install
       - run: npm run build
 
@@ -113,5 +123,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Build SDK
+        working-directory: sdk
+        run: |
+          npm install
+          npm run build
       - run: npm install
       - run: npm run build
