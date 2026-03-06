@@ -15,22 +15,22 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
 import uuid, time
-from qdrant_store import QdrantStore
+from qdrant_store import get_client
+from qdrant_client.models import Filter, FieldCondition, MatchValue, PointStruct
 
 router = APIRouter(prefix="/group", tags=["Group Identity"])
-store  = QdrantStore()
+client = get_client()
 
 COLLECTION = "vface_embeddings"
-
 
 # ── Request/Response Models ──────────────────────────────────────────────────
 
 class GroupEnrollRequest(BaseModel):
-    group_id:   str          # wallet or org ID (owner)
-    member_id:  Optional[str] = None   # auto-generated if omitted
-    embedding:  List[float]  # 128-d vector
-    role:       str = "member"         # owner | member | guest
-    added_by:   str          # wallet of admin
+    group_id:   str
+    member_id:  Optional[str] = None
+    embedding:  List[float]
+    role:       str = "member"
+    added_by:   str
 
 class GroupVerifyRequest(BaseModel):
     group_id:   str
@@ -42,23 +42,15 @@ class GroupMember(BaseModel):
     role:       str
     added_by:   str
     added_at:   int
-    similarity: Optional[float] = None  # populated on search
-
+    similarity: Optional[float] = None
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.post("/enroll")
-async def enroll_member(req: GroupEnrollRequest):
-    """
-    Add a member's face embedding to a group.
-    - Generates unique member_id if not provided
-    - Stores embedding with group_id + role in Qdrant payload
-    - Checks for duplicate face within the SAME group
-    """
+def enroll_member(req: GroupEnrollRequest):
     member_id = req.member_id or str(uuid.uuid4())
 
-    # Sybil check within group — prevent same face added twice
-    existing = await search_group_internal(req.group_id, req.embedding, threshold=0.90)
+    existing = search_group_internal(req.group_id, req.embedding, threshold=0.90)
     if existing:
         raise HTTPException(
             status_code=409,
@@ -75,13 +67,13 @@ async def enroll_member(req: GroupEnrollRequest):
     }
 
     point_id = str(uuid.uuid4())
-    await store.upsert(
-        collection=COLLECTION,
-        points=[{
-            "id":      point_id,
-            "vector":  req.embedding,
-            "payload": payload,
-        }]
+    client.upsert(
+        collection_name=COLLECTION,
+        points=[PointStruct(
+            id=point_id,
+            vector=req.embedding,
+            payload=payload,
+        )]
     )
 
     return {
@@ -94,13 +86,8 @@ async def enroll_member(req: GroupEnrollRequest):
 
 
 @router.post("/verify")
-async def verify_in_group(req: GroupVerifyRequest):
-    """
-    Verify a face against all members of a specific group.
-    Returns the matched member(s) with similarity scores.
-    Useful for: team access, family verification, org authentication.
-    """
-    matches = await search_group_internal(req.group_id, req.embedding, req.threshold)
+def verify_in_group(req: GroupVerifyRequest):
+    matches = search_group_internal(req.group_id, req.embedding, req.threshold)
 
     if not matches:
         return {"matched": False, "members": []}
@@ -111,7 +98,7 @@ async def verify_in_group(req: GroupVerifyRequest):
             {
                 "member_id":  m.member_id,
                 "role":       m.role,
-                "similarity": round(m.similarity, 4),
+                "similarity": round(m.similarity, 4) if m.similarity else 0,
                 "added_by":   m.added_by,
                 "added_at":   m.added_at,
             }
@@ -123,19 +110,15 @@ async def verify_in_group(req: GroupVerifyRequest):
 
 
 @router.get("/{group_id}/members")
-async def list_members(group_id: str):
-    """
-    List all members in a group (without embeddings — privacy safe).
-    Requires caller to be group owner (enforced by API server JWT middleware).
-    """
-    results = await store.scroll(
-        collection=COLLECTION,
-        scroll_filter={
-            "must": [
-                {"key": "group_id", "match": {"value": group_id}},
-                {"key": "type",     "match": {"value": "group_member"}},
+def list_members(group_id: str):
+    results, _ = client.scroll(
+        collection_name=COLLECTION,
+        scroll_filter=Filter(
+            must=[
+                FieldCondition(key="group_id", match=MatchValue(value=group_id)),
+                FieldCondition(key="type", match=MatchValue(value="group_member")),
             ]
-        },
+        ),
         with_payload=True,
         with_vectors=False,
     )
@@ -154,20 +137,15 @@ async def list_members(group_id: str):
 
 
 @router.delete("/{group_id}/members/{member_id}")
-async def remove_member(group_id: str, member_id: str, removed_by: str):
-    """
-    Remove a member from a group by member_id.
-    Only group owners can remove members.
-    """
-    # Find the point
-    results = await store.scroll(
-        collection=COLLECTION,
-        scroll_filter={
-            "must": [
-                {"key": "group_id",  "match": {"value": group_id}},
-                {"key": "member_id", "match": {"value": member_id}},
+def remove_member(group_id: str, member_id: str, removed_by: str):
+    results, _ = client.scroll(
+        collection_name=COLLECTION,
+        scroll_filter=Filter(
+            must=[
+                FieldCondition(key="group_id", match=MatchValue(value=group_id)),
+                FieldCondition(key="member_id", match=MatchValue(value=member_id)),
             ]
-        },
+        ),
         with_payload=False,
         with_vectors=False,
     )
@@ -176,29 +154,28 @@ async def remove_member(group_id: str, member_id: str, removed_by: str):
         raise HTTPException(status_code=404, detail="Member not found in group")
 
     point_id = results[0].id
-    await store.delete(collection=COLLECTION, points_selector=[point_id])
+    client.delete(collection_name=COLLECTION, points_selector=[point_id])
 
     return {"success": True, "removed_member": member_id, "group_id": group_id}
 
 
 # ── Internal Helpers ─────────────────────────────────────────────────────────
 
-async def search_group_internal(
+def search_group_internal(
     group_id: str,
     embedding: List[float],
     threshold: float = 0.75
 ) -> List[GroupMember]:
-    """Search within a specific group using Qdrant filter."""
-    results = await store.search(
-        collection=COLLECTION,
+    results = client.search(
+        collection_name=COLLECTION,
         query_vector=embedding,
         limit=10,
-        query_filter={
-            "must": [
-                {"key": "group_id", "match": {"value": group_id}},
-                {"key": "type",     "match": {"value": "group_member"}},
+        query_filter=Filter(
+            must=[
+                FieldCondition(key="group_id", match=MatchValue(value=group_id)),
+                FieldCondition(key="type", match=MatchValue(value="group_member")),
             ]
-        },
+        ),
         score_threshold=threshold,
         with_payload=True,
     )
