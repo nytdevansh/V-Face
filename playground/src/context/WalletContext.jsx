@@ -64,7 +64,7 @@ export function WalletProvider({ children }) {
 
         try {
             if (typeof window.ethereum === 'undefined') {
-                throw new Error("MetaMask is not installed. Please install it to continue.");
+                throw new Error("MetaMask is not installed. Sending you to the download page...");
             }
 
             const _provider = new ethers.BrowserProvider(window.ethereum);
@@ -90,7 +90,8 @@ export function WalletProvider({ children }) {
             } else if (err.code === -32002) {
                 setError("Connection request already pending. Please check MetaMask.");
             } else if (err.message?.includes("not installed")) {
-                setError("MetaMask is not installed. Please install it to continue.");
+                window.open('https://metamask.io/download/', '_blank');
+                setError("MetaMask is not installed. Sending you to the download page...");
             } else {
                 setError(err.message || "Failed to connect wallet. Please try again.");
             }
