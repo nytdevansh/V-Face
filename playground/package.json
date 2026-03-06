@@ -12,6 +12,7 @@
   "dependencies": {
     "@v-face/sdk": "file:../sdk",
     "ethers": "^6.16.0",
+    "framer-motion": "^12.35.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-webcam": "^7.2.0"

@@ -76,11 +76,6 @@
     "peerDependencies": {
         "react": "^18.0.0"
     },
-    "peerDependenciesMeta": {
-        "react": {
-            "optional": true
-        }
-    },
     "dependencies": {
         "@simplewebauthn/browser": "^13.2.2",
         "circomlibjs": "^0.1.7",
