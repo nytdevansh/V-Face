@@ -1,4 +1,5 @@
 const express = require('express');
+const http = require('http');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const db = require('./db');
@@ -9,8 +10,10 @@ const rateLimit = require('express-rate-limit');
 const { body, validationResult } = require('express-validator');
 const { encryptEmbedding, decryptEmbedding } = require('./encryption');
 const matchingClient = require('./matching_client');
+const { Server: SocketIO } = require('socket.io');
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 
 // CORS: Allow Vercel frontends + localhost in dev
@@ -87,12 +90,8 @@ app.get('/model/mobilefacenet.onnx', (req, res) => {
     }
 });
 
-// --- JWT Signing Keys (ES256) ---
-const { privateKey, publicKey } = crypto.generateKeyPairSync('ec', {
-    namedCurve: 'prime256v1',
-    publicKeyEncoding: { type: 'spki', format: 'pem' },
-    privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
-});
+// --- JWT Signing Keys (ES256) — Persistent across restarts ---
+const { privateKey, publicKey } = require('./signing_keys');
 
 console.log("Server Public Key:\n", publicKey);
 
@@ -135,6 +134,10 @@ app.post('/register', registerLimiter, [
 
     const { fingerprint, public_key, embedding, metadata } = req.body;
 
+    // Emit WebSocket event: registration started
+    const io = req.app.get('io');
+    if (io) io.emit('registration:started', { fingerprint: fingerprint.slice(0, 8) + '...' });
+
     // Encrypt embedding for commitment derivation (stays on API server)
     const encryptedEmbedding = embedding ? encryptEmbedding(embedding) : null;
 
@@ -165,6 +168,7 @@ app.post('/register', registerLimiter, [
                 return res.status(409).json({ error: matchErr.message });
             }
             console.error('Matching service enrollment failed:', matchErr.message);
+            if (io) io.emit('registration:enrollment_failed', { fingerprint: fingerprint.slice(0, 8) + '...' });
             // Non-fatal: still register metadata, vector can be retried
         }
     }
@@ -200,6 +204,7 @@ app.post('/register', registerLimiter, [
             entryHash: chainEntry ? chainEntry.entryHash : null,
             vectorStored: !!matchingResult,
         });
+        if (io) io.emit('registration:complete', { fingerprint: fingerprint.slice(0, 8) + '...', chainIndex });
     });
     stmt.finalize();
 });
@@ -453,13 +458,65 @@ app.post('/search', [
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const { encrypted_embedding, threshold = 0.85, top_k = 1 } = req.body;
+    const io = req.app.get('io');
 
     try {
+        if (io) io.emit('verification:started', { timestamp: Date.now() });
         const result = await matchingClient.search(encrypted_embedding, threshold, top_k);
+        if (io) io.emit(result.matched ? 'verification:matched' : 'verification:no_match', {
+            matched: result.matched,
+            search_time_ms: result.search_time_ms,
+        });
         res.json(result);
     } catch (err) {
         console.error('Search error:', err);
+        if (io) io.emit('verification:failed', { error: err.message });
         res.status(500).json({ error: 'Search failed: ' + err.message });
+    }
+});
+
+// 9. Refresh Embedding (Drift Management)
+// POST /refresh { fingerprint, embedding }
+app.post('/refresh', [
+    body('fingerprint').isString().isLength({ min: 64, max: 64 }).matches(/^[a-f0-9]+$/),
+    body('embedding').isString().notEmpty()
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const { fingerprint, embedding } = req.body;
+    const io = req.app.get('io');
+
+    try {
+        // Encrypt the new embedding
+        const encryptedEmbedding = encryptEmbedding(embedding);
+
+        if (io) io.emit('refresh:started', { fingerprint: fingerprint.slice(0, 8) + '...' });
+
+        // Delegate to matching service
+        const result = await matchingClient.refreshEmbedding(fingerprint, encryptedEmbedding);
+
+        // Log drift event to hash chain
+        try {
+            const driftCommitment = crypto.createHash('sha256')
+                .update(`drift:${fingerprint}:${result.drift_score}:${Date.now()}`)
+                .digest('hex');
+            await chain.appendEntry(driftCommitment, fingerprint);
+        } catch (chainErr) {
+            console.error('Hash chain drift log failed:', chainErr.message);
+        }
+
+        if (io) io.emit('refresh:complete', {
+            fingerprint: fingerprint.slice(0, 8) + '...',
+            drift_score: result.drift_score,
+        });
+
+        res.json(result);
+    } catch (err) {
+        console.error('Refresh error:', err);
+        if (io) io.emit('refresh:failed', { error: err.message });
+        const status = err.statusCode || 500;
+        res.status(status).json({ error: err.message });
     }
 });
 
@@ -529,9 +586,30 @@ app.get('/chain/verify', async (req, res) => {
 // Similarity search helpers removed — delegated to matching service (Qdrant HNSW)
 
 // ============================================================================
+// WebSocket (socket.io)
+// ============================================================================
+
+const io = new SocketIO(server, {
+    cors: {
+        origin: allowedOrigins,
+        methods: ['GET', 'POST'],
+    },
+});
+
+io.on('connection', (socket) => {
+    console.log(`🔌 Client connected: ${socket.id}`);
+    socket.on('disconnect', () => {
+        console.log(`🔌 Client disconnected: ${socket.id}`);
+    });
+});
+
+// Make io accessible to routes
+app.set('io', io);
+
+// ============================================================================
 // START SERVER
 // ============================================================================
 
-app.listen(PORT, () => {
-    console.log(`🚀 V-Face Registry API running on port ${PORT}`);
+server.listen(PORT, () => {
+    console.log(`🚀 V-Face Registry API running on port ${PORT} (WebSocket enabled)`);
 });

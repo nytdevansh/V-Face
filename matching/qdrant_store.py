@@ -54,6 +54,12 @@ def ensure_collection(client: QdrantClient):
                 field_name="status",
                 field_schema=PayloadSchemaType.KEYWORD,
             )
+            # Index on model_version for versioned queries
+            client.create_payload_index(
+                collection_name=COLLECTION_NAME,
+                field_name="model_version",
+                field_schema=PayloadSchemaType.KEYWORD,
+            )
             logger.info(f"Created collection '{COLLECTION_NAME}' ({VECTOR_DIM}-d, cosine)")
         except Exception as e:
             if "already exists" in str(e):
@@ -64,7 +70,13 @@ def ensure_collection(client: QdrantClient):
         logger.info(f"Collection '{COLLECTION_NAME}' already exists")
 
 
-def upsert_embedding(client: QdrantClient, point_id: str, vector: list[float], payload: dict):
+def upsert_embedding(
+    client: QdrantClient,
+    point_id: str,
+    vector: list[float],
+    payload: dict,
+    model_version: str = "mobilefacenet_v1",
+):
     """Store or update a vector in Qdrant."""
     # Qdrant uses unsigned integers or UUIDs for point IDs
     # We hash the fingerprint to a stable integer
@@ -76,11 +88,33 @@ def upsert_embedding(client: QdrantClient, point_id: str, vector: list[float], p
             PointStruct(
                 id=numeric_id,
                 vector=vector,
-                payload={**payload, "fingerprint": point_id},
+                payload={**payload, "fingerprint": point_id, "model_version": model_version},
             )
         ],
     )
     return numeric_id
+
+
+def get_embedding(client: QdrantClient, fingerprint: str) -> dict | None:
+    """Retrieve an existing embedding by fingerprint."""
+    numeric_id = int.from_bytes(bytes.fromhex(fingerprint[:16]), "big")
+    try:
+        points = client.retrieve(
+            collection_name=COLLECTION_NAME,
+            ids=[numeric_id],
+            with_vectors=True,
+            with_payload=True,
+        )
+        if not points:
+            return None
+        point = points[0]
+        return {
+            "vector": point.vector,
+            "payload": point.payload,
+            "fingerprint": point.payload.get("fingerprint"),
+        }
+    except Exception:
+        return None
 
 
 def search_similar(

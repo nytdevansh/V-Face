@@ -1,6 +1,7 @@
 import { loadModel, generateEmbedding, cosineSimilarity } from './embedding/pipeline.js';
 import { generateFingerprint } from './fingerprint/index.js';
 import { Registry, RegistryError } from './registry/index.js';
+import { LivenessDetector } from './liveness/liveness.js';
 
 /**
  * V-Face SDK — Unified API for biometric identity.
@@ -23,6 +24,9 @@ export class VFaceSDK {
     constructor(config = {}) {
         this.registry = new Registry(config.registryUrl);
         this.modelPath = config.modelPath || '/model/mobilefacenet.onnx';
+        this.livenessModelPath = config.livenessModelPath || '/model/fas_net.onnx';
+        this.requireLiveness = config.requireLiveness || false;
+        this.liveness = new LivenessDetector({ modelPath: this.livenessModelPath });
         this.isLoaded = false;
     }
 
@@ -32,6 +36,7 @@ export class VFaceSDK {
     async init() {
         if (this.isLoaded) return;
         await loadModel(this.modelPath);
+        await this.liveness.init();
         this.isLoaded = true;
     }
 
@@ -61,6 +66,15 @@ export class VFaceSDK {
         return generateEmbedding(imageSource);
     }
 
+    /**
+     * Check if a face image is from a live person (anti-spoofing).
+     * @param {HTMLImageElement|HTMLCanvasElement|HTMLVideoElement} imageSource
+     * @returns {Promise<{isLive: boolean, score: number, available: boolean}>}
+     */
+    async checkLiveness(imageSource) {
+        return this.liveness.check(imageSource);
+    }
+
     // ========================================================================
     // REGISTRY OPERATIONS
     // ========================================================================
@@ -74,6 +88,14 @@ export class VFaceSDK {
      */
     async register(imageSource, publicKey, metadata = null) {
         if (!this.isLoaded) await this.init();
+
+        // Optional liveness check before registration
+        if (this.requireLiveness) {
+            const livenessResult = await this.liveness.check(imageSource);
+            if (livenessResult.available && !livenessResult.isLive) {
+                throw new Error(`Liveness check failed (score: ${livenessResult.score}). Possible spoofing detected.`);
+            }
+        }
 
         const embedding = await generateEmbedding(imageSource);
         const fingerprint = await generateFingerprint(embedding);
@@ -155,3 +177,19 @@ export class VFaceSDK {
 export { cosineSimilarity } from './embedding/pipeline.js';
 export { generateFingerprint } from './fingerprint/index.js';
 export { Registry, RegistryError } from './registry/index.js';
+export { LivenessDetector } from './liveness/liveness.js';
+
+// ZK-SNARK helpers (#2)
+export { generateProof, verifyProofLocal, zkRegister, computeCommitment } from './zk/zkProof.js';
+
+// Offline verification (#17)
+export {
+    cacheEmbeddingLocally,
+    verifyOffline,
+    clearLocalCache,
+    isOfflineModeAvailable,
+    useOfflineMode,
+} from './offline/offlineVerify.js';
+
+// WebAuthn client hook (#14)
+export { useWebAuthn } from './useWebAuthn.js';

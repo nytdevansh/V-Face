@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>V-Face</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            width: 320px;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0f;
+            color: #e0e0e0;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .header h1 {
+            font-size: 18px;
+            background: linear-gradient(135deg, #7c3aed, #06b6d4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 12px;
+            font-size: 13px;
+        }
+        .status .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+        }
+        .status .dot.offline { background: #ef4444; }
+        .info { font-size: 12px; color: #888; line-height: 1.5; }
+        .info code {
+            background: rgba(124, 58, 237, 0.2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>V-Face Identity</h1>
+    </div>
+
+    <div class="status" id="status">
+        <div class="dot" id="statusDot"></div>
+        <span id="statusText">Checking...</span>
+    </div>
+
+    <div class="info">
+        <p>V-Face injects <code>window.vface</code> into every page.</p>
+        <p style="margin-top: 8px;">Apps can use:</p>
+        <p style="margin-top: 4px;"><code>await window.vface.verify(img)</code></p>
+        <p style="margin-top: 4px;"><code>await window.vface.register(img, key)</code></p>
+    </div>
+
+    <script>
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            chrome.tabs.sendMessage(tabs[0].id, { type: 'vface:ping' }, (response) => {
+                const dot = document.getElementById('statusDot');
+                const text = document.getElementById('statusText');
+                if (response?.ready) {
+                    dot.className = 'dot';
+                    text.textContent = 'Active on this page';
+                } else {
+                    dot.className = 'dot offline';
+                    text.textContent = 'Not initialized';
+                }
+            });
+        });
+    </script>
+</body>
+</html>

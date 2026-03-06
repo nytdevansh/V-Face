@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useWallet } from '../context/WalletContext';
+import { AnimatePresence, motion } from 'framer-motion';
 
 export default function Layout({ children, activeTab, onTabChange }) {
-    const { account, connectWallet, isConnected } = useWallet();
+    const { account, connectWallet, isConnecting, isConnected, error, clearError } = useWallet();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     const truncate = (str) => str ? `${str.slice(0, 6)}...${str.slice(-4)}` : '';
@@ -16,6 +17,38 @@ export default function Layout({ children, activeTab, onTabChange }) {
 
     return (
         <div className="min-h-screen bg-gray-950 text-gray-100 font-sans">
+            {/* Error Toast Notification */}
+            <AnimatePresence>
+                {error && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 max-w-md px-4 sm:px-0"
+                    >
+                        <div className="bg-red-900/90 backdrop-blur-md border border-red-500/50 rounded-lg p-4 shadow-lg">
+                            <div className="flex items-start gap-3">
+                                <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                </svg>
+                                <div className="flex-1">
+                                    <h3 className="font-semibold text-red-200">Connection Error</h3>
+                                    <p className="text-sm text-red-300 mt-1">{error}</p>
+                                </div>
+                                <button
+                                    onClick={clearError}
+                                    className="text-red-400 hover:text-red-300 transition-colors flex-shrink-0"
+                                >
+                                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* Navigation Header */}
             <nav className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-md fixed w-full top-0 z-50">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -58,9 +91,10 @@ export default function Layout({ children, activeTab, onTabChange }) {
                             ) : (
                                 <button
                                     onClick={connectWallet}
-                                    className="px-3 sm:px-5 py-2 bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-gray-950 text-xs sm:text-sm font-bold rounded-lg transition-all hover:shadow-lg hover:shadow-cyan-500/30"
+                                    disabled={isConnecting}
+                                    className="px-3 sm:px-5 py-2 bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-gray-950 text-xs sm:text-sm font-bold rounded-lg transition-all hover:shadow-lg hover:shadow-cyan-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    Connect
+                                    {isConnecting ? "CONNECTING..." : "CONNECT"}
                                 </button>
                             )}
 

@@ -6,6 +6,10 @@ yarn.lock
 # Environment variables (NEVER commit this!)
 .env
 
+# Signing keys (private key material)
+*.pem
+signing.pem
+
 # Hardhat
 cache/
 artifacts/

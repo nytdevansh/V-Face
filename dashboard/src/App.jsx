@@ -3,10 +3,10 @@ import Navbar from './components/Navbar';
 import Dashboard from './components/Dashboard';
 import AnimatedBackground from './components/AnimatedBackground';
 import { useWallet } from './context/WalletContext';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 function App() {
-  const { account, connectWallet, isConnecting } = useWallet();
+  const { account, connectWallet, isConnecting, error, clearError } = useWallet();
   const [showDashboard, setShowDashboard] = useState(false);
 
   return (
@@ -14,6 +14,38 @@ function App() {
       <AnimatedBackground />
       <div className="relative z-10">
         <Navbar />
+
+        {/* Error Toast Notification */}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="fixed top-24 left-1/2 transform -translate-x-1/2 z-50 max-w-md"
+            >
+              <div className="bg-red-900/90 backdrop-blur-md border border-red-500/50 rounded-lg p-4 shadow-lg">
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-red-200">Error</h3>
+                    <p className="text-sm text-red-300 mt-1">{error}</p>
+                  </div>
+                  <button
+                    onClick={clearError}
+                    className="text-red-400 hover:text-red-300 transition-colors flex-shrink-0"
+                  >
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <main className="container mx-auto px-4 py-12 md:py-16">
           {!account ? (

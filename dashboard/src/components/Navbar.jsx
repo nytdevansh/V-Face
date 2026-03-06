@@ -3,9 +3,14 @@ import { useWallet } from '../context/WalletContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Navbar() {
-    const { account, connectWallet, isConnecting } = useWallet();
+    const { account, connectWallet, isConnecting, error, clearError } = useWallet();
     const [showMenu, setShowMenu] = useState(false);
     const [showMobileNav, setShowMobileNav] = useState(false);
+
+    const handleDisconnect = () => {
+        // Note: MetaMask doesn't have a built-in disconnect, so we clear if needed
+        setShowMenu(false);
+    };
 
     return (
         <nav className="fixed top-0 w-full z-50 bg-[#0B0C15]/80 backdrop-blur-md border-b border-white/5">
@@ -44,9 +49,9 @@ export default function Navbar() {
                 {/* Wallet Connection */}
                 <div className="flex items-center space-x-2 sm:space-x-4">
                     {/* Network Indicator */}
-                    <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-sm">
-                        <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-pulse" />
-                        <span className="text-xs font-mono text-purple-400">POLYGON</span>
+                    <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/20 rounded-sm">
+                        <div className="w-1.5 h-1.5 bg-cyan-500 rounded-full animate-pulse" />
+                        <span className="text-xs font-mono text-cyan-400">POLYGON</span>
                     </div>
 
                     {account ? (
@@ -91,13 +96,24 @@ export default function Navbar() {
                                                 Copy Address
                                             </button>
                                         </div>
-                                        <div className="p-2 border-t border-white/5">
-                                            <button className="w-full px-4 py-2 text-left text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors flex items-center gap-2">
-                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                                                </svg>
-                                                Disconnect
-                                            </button>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={connectWallet}
+                            disabled={isConnecting}
+                            className="px-3 sm:px-5 py-2 bg-gradient-to-r from-cyan-500 to-cyan-400 hover:from-cyan-400 hover:to-cyan-300 text-gray-950 text-xs sm:text-sm font-bold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg hover:shadow-cyan-500/30"
+                        >
+                            {isConnecting ? "CONNECTING..." : "CONNECT"}
+                        </button>
+                    )}
+                </div>
+            </div>
+        </nav>
+    );
+}
                                         </div>
                                     </motion.div>
                                 )}

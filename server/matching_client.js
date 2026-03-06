@@ -96,4 +96,30 @@ async function health() {
     return res.json();
 }
 
-module.exports = { enroll, search, deleteVector, health };
+/**
+ * Refresh an aging embedding with a new face capture.
+ * @param {string} fingerprint - 64-char hex
+ * @param {string} encryptedEmbedding - AES-256-GCM encrypted new embedding
+ * @returns {Promise<{success: boolean, fingerprint: string, drift_score: number, blended: boolean}>}
+ */
+async function refreshEmbedding(fingerprint, encryptedEmbedding) {
+    const res = await fetch(`${MATCHING_URL}/refresh`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+            fingerprint,
+            encrypted_embedding: encryptedEmbedding,
+        }),
+    });
+
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        const error = new Error(err.detail || 'Matching service refresh failed');
+        error.statusCode = res.status;
+        throw error;
+    }
+
+    return res.json();
+}
+
+module.exports = { enroll, search, deleteVector, health, refreshEmbedding };

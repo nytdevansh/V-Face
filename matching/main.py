@@ -20,7 +20,7 @@ import numpy as np
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel
 
-from qdrant_store import get_client, ensure_collection, upsert_embedding, search_similar, delete_vector, get_collection_info
+from qdrant_store import get_client, ensure_collection, upsert_embedding, search_similar, delete_vector, get_collection_info, get_embedding
 from crypto_utils import decrypt_embedding
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -28,6 +28,8 @@ logger = logging.getLogger("matching")
 
 MATCHING_SECRET = os.getenv("MATCHING_SECRET", "dev-secret-change-me")
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.85"))
+REFRESH_THRESHOLD = float(os.getenv("REFRESH_THRESHOLD", "0.70"))  # Lower threshold for drift refresh
+DP_SIGMA = float(os.getenv("DP_SIGMA", "0.0"))  # Differential privacy noise (0 = disabled)
 
 # Global Qdrant client
 qdrant = None
@@ -61,11 +63,19 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="V-Face Matching Service",
-    version="1.0.0",
+    version="1.1.0",
     docs_url=None,   # No public Swagger
     redoc_url=None,
     lifespan=lifespan,
 )
+
+# Include anomaly detection router
+from anomaly import router as anomaly_router, detector as anomaly_detector
+app.include_router(anomaly_router)
+
+# Include group identity router (#4 Multi-Face Groups)
+from group_identity import router as group_router
+app.include_router(group_router)
 
 
 # ============================================================================
@@ -111,6 +121,18 @@ class DeleteRequest(BaseModel):
     fingerprint: str
 
 
+class RefreshRequest(BaseModel):
+    fingerprint: str           # Identity to refresh
+    encrypted_embedding: str   # New face capture (encrypted)
+
+
+class RefreshResponse(BaseModel):
+    success: bool
+    fingerprint: str
+    drift_score: float         # Cosine similarity between old and new
+    blended: bool              # Whether blending was applied
+
+
 # ============================================================================
 # Endpoints
 # ============================================================================
@@ -142,7 +164,15 @@ def enroll(req: EnrollRequest, x_matching_secret: str = Header(None)):
                 f"fingerprint: {duplicates[0]['fingerprint'][:8]}...)"
             )
 
-        # 5. Store in Qdrant
+        # 5. Apply differential privacy noise (if enabled)
+        if DP_SIGMA > 0:
+            noise = np.random.normal(0, DP_SIGMA, size=128).astype(np.float32)
+            vec = vec + noise
+            norm = np.linalg.norm(vec)
+            if norm > 0:
+                vec = vec / norm  # Re-normalize after noise
+
+        # 6. Store in Qdrant
         payload = {
             "user_id": req.user_id or req.fingerprint,
             "status": "active",
@@ -193,6 +223,11 @@ def search(req: SearchRequest, x_matching_secret: str = Header(None)):
 
         elapsed = (time.time() - start) * 1000
 
+        # 5. Record verification event for anomaly detection
+        if results:
+            for r in results:
+                anomaly_detector.record_event(r.get("fingerprint", "unknown"))
+
         return SearchResponse(
             matched=len(results) > 0,
             results=results,
@@ -216,6 +251,76 @@ def delete(req: DeleteRequest, x_matching_secret: str = Header(None)):
     except Exception as e:
         logger.error(f"Delete failed: {e}")
         raise HTTPException(500, f"Delete failed: {str(e)}")
+
+
+# ============================================================================
+# Embedding Drift Management
+# ============================================================================
+
+@app.post("/refresh", response_model=RefreshResponse)
+def refresh(req: RefreshRequest, x_matching_secret: str = Header(None)):
+    """Refresh an aging embedding with a new face capture."""
+    verify_secret(x_matching_secret)
+
+    try:
+        # 1. Get existing embedding
+        existing = get_embedding(qdrant, req.fingerprint)
+        if not existing:
+            raise HTTPException(404, "Identity not found in vector store")
+
+        old_vec = np.array(existing["vector"], dtype=np.float32)
+
+        # 2. Decrypt new embedding
+        new_embedding = decrypt_embedding(req.encrypted_embedding)
+        if len(new_embedding) != 128:
+            raise HTTPException(400, f"Expected 128-d, got {len(new_embedding)}-d")
+
+        new_vec = np.array(new_embedding, dtype=np.float32)
+        norm = np.linalg.norm(new_vec)
+        if norm > 0:
+            new_vec = new_vec / norm
+
+        # 3. Check similarity (must be above refresh threshold)
+        drift_score = float(np.dot(old_vec, new_vec))
+        if drift_score < REFRESH_THRESHOLD:
+            raise HTTPException(
+                403,
+                f"New capture too different from stored identity (score: {drift_score:.4f}, "
+                f"threshold: {REFRESH_THRESHOLD}). Re-registration required."
+            )
+
+        # 4. Blend embeddings: weighted average
+        blended = 0.7 * old_vec + 0.3 * new_vec
+        blended_norm = np.linalg.norm(blended)
+        if blended_norm > 0:
+            blended = blended / blended_norm
+
+        # 5. Update in Qdrant (preserve existing payload)
+        payload = existing.get("payload", {})
+        payload["refreshed_at"] = int(time.time())
+        payload["drift_score"] = round(drift_score, 4)
+
+        upsert_embedding(qdrant, req.fingerprint, blended.tolist(), payload)
+
+        # 6. Zero memory
+        old_vec.fill(0)
+        new_vec.fill(0)
+        blended.fill(0)
+        del new_embedding
+
+        logger.info(f"Refreshed: {req.fingerprint[:8]}... (drift: {drift_score:.4f})")
+        return RefreshResponse(
+            success=True,
+            fingerprint=req.fingerprint,
+            drift_score=round(drift_score, 4),
+            blended=True,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Refresh failed: {e}")
+        raise HTTPException(500, f"Refresh failed: {str(e)}")
 
 
 @app.get("/health")

@@ -49,6 +49,7 @@ services:
       MATCHING_SECRET: ${MATCHING_SECRET:-dev-secret-change-me}
       VFACE_ENCRYPTION_KEY: ${VFACE_ENCRYPTION_KEY}
       DATABASE_PATH: /app/data/registry.db
+      SIGNING_KEY_PATH: /app/data/signing.pem
     volumes:
       - api_data:/app/data
     depends_on:

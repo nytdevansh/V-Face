@@ -20,20 +20,22 @@ export const WalletProvider = ({ children }) => {
     const [account, setAccount] = useState(null);
     const [signer, setSigner] = useState(null);
     const [isConnecting, setIsConnecting] = useState(false);
+    const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState(null);
 
     // Auto-connect if already connected
     useEffect(() => {
         const autoConnect = async () => {
             if (window.ethereum) {
-                const provider = new ethers.BrowserProvider(window.ethereum);
                 try {
+                    const provider = new ethers.BrowserProvider(window.ethereum);
                     const accounts = await provider.listAccounts();
                     if (accounts.length > 0) {
                         handleAccountsChanged(accounts);
                     }
                 } catch (err) {
                     console.error("Error checking accounts", err);
+                    setError("Failed to check wallet connection");
                 }
             }
         };
@@ -54,24 +56,33 @@ export const WalletProvider = ({ children }) => {
     }, []);
 
     const handleAccountsChanged = async (accounts) => {
-        if (accounts.length === 0) {
-            setAccount(null);
-            setSigner(null);
-        } else {
-            const address = accounts[0].address || accounts[0];
-            setAccount(address);
+        try {
+            if (accounts.length === 0) {
+                setAccount(null);
+                setSigner(null);
+                setIsConnected(false);
+                setError(null);
+            } else {
+                const address = accounts[0].address || accounts[0];
+                setAccount(address);
+                setIsConnected(true);
+                setError(null);
 
-            if (window.ethereum) {
-                const provider = new ethers.BrowserProvider(window.ethereum);
-                const s = await provider.getSigner();
-                setSigner(s);
+                if (window.ethereum) {
+                    const provider = new ethers.BrowserProvider(window.ethereum);
+                    const s = await provider.getSigner();
+                    setSigner(s);
+                }
             }
+        } catch (err) {
+            console.error("Error handling account change", err);
+            setError("Failed to update account information");
         }
     };
 
     const connectWallet = async () => {
         if (!window.ethereum) {
-            setError("MetaMask not installed");
+            setError("MetaMask is not installed. Please install MetaMask to continue.");
             return;
         }
 
@@ -81,14 +92,30 @@ export const WalletProvider = ({ children }) => {
         try {
             const provider = new ethers.BrowserProvider(window.ethereum);
             const accounts = await provider.send("eth_requestAccounts", []);
+            
+            if (!accounts || accounts.length === 0) {
+                throw new Error("No accounts found in wallet.");
+            }
+            
             await handleAccountsChanged(accounts);
         } catch (err) {
-            console.error("Error connecting wallet", err);
-            setError(err.message || "Failed to connect");
+            console.error("Error connecting wallet:", err);
+            
+            if (err.code === 4001) {
+                setError("Connection rejected. Please try again.");
+            } else if (err.code === -32002) {
+                setError("Connection request already pending. Please check MetaMask.");
+            } else if (err.message?.includes("not installed")) {
+                setError("MetaMask is not installed. Please install it to continue.");
+            } else {
+                setError(err.message || "Failed to connect wallet. Please try again.");
+            }
         } finally {
             setIsConnecting(false);
         }
     };
+
+    const clearError = () => setError(null);
 
     return (
         <WalletContext.Provider
@@ -99,7 +126,9 @@ export const WalletProvider = ({ children }) => {
                 registry,
                 connectWallet,
                 isConnecting,
+                isConnected,
                 error,
+                clearError,
             }}
         >
             {children}
