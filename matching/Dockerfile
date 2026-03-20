@@ -7,6 +7,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Create persistent data directory for sqlite-vec DB
+RUN mkdir -p /app/data
+VOLUME /app/data
+
 EXPOSE 8001
 
 # Use WEB_CONCURRENCY env var if set (default to 1 for cloud platforms)
@@ -14,3 +18,4 @@ EXPOSE 8001
 ENV WEB_CONCURRENCY=1
 
 CMD bash -c 'uvicorn main:app --host 0.0.0.0 --port 8001 --workers ${WEB_CONCURRENCY:-1}'
+

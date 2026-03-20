@@ -3,8 +3,8 @@
 ## Architecture Recap
 
 ```
-Internet → Node.js API (:3000) → Python Matching (:8001) → Qdrant (:6333)
-               public                 internal only          internal only
+Internet → Node.js API (:3000) → Python Matching (:8001, self-contained with sqlite-vec)
+               public                 internal only
 ```
 
 ---
@@ -12,15 +12,9 @@ Internet → Node.js API (:3000) → Python Matching (:8001) → Qdrant (:6333)
 ## Option 1: Render + Railway (Recommended for MVP)
 
 The simplest path — each service on a managed platform, no DevOps needed.
+The matching service is self-contained (sqlite-vec runs in-process), so no separate vector DB hosting is needed.
 
-### 1. Qdrant Cloud (Vector DB)
-
-Go to [cloud.qdrant.io](https://cloud.qdrant.io):
-- Create a free-tier cluster (1GB, enough for ~200K vectors)
-- Note your **URL** (e.g. `https://abc123.us-east4-0.gcp.cloud.qdrant.io:6333`)
-- Note your **API key**
-
-### 2. Matching Service → Railway
+### 1. Matching Service → Railway or Render
 
 [Railway](https://railway.app) supports Dockerfiles natively.
 
@@ -37,13 +31,14 @@ railway up
 
 Set environment variables in Railway dashboard:
 ```
-QDRANT_URL=https://your-qdrant-cloud-url:6333
-QDRANT_API_KEY=your-qdrant-api-key
 VFACE_ENCRYPTION_KEY=<your 64-char hex key>
 MATCHING_SECRET=<generate a strong secret>
+VECTOR_DB_PATH=/app/data/vectors.db
 COLLECTION_NAME=vface_embeddings
 VECTOR_DIM=128
 ```
+
+Add a persistent disk mounted at `/app/data` for the sqlite-vec database.
 
 Note the Railway URL (e.g. `https://matching-production-abc123.up.railway.app`).
 
@@ -141,14 +136,12 @@ For serious scale. Use managed K8s (GKE, EKS, AKS).
 | Service | Replicas | Resources |
 |---------|----------|-----------|
 | API (Node.js) | 3-5 | 512MB / 0.5 CPU |
-| Matching (Python) | 2-3 | 1GB / 1 CPU |
-| Qdrant | 1 (or sharded) | 32GB / 4 CPU |
+| Matching (Python + sqlite-vec) | 2-3 | 1GB / 1 CPU |
 
 ### Key Considerations
 
-- **Qdrant**: Use [Qdrant Cloud](https://cloud.qdrant.io) managed, or self-host with persistent volume claims
+- **Matching**: Each replica has its own sqlite-vec DB — use shared persistent storage (e.g. NFS/EFS) or switch to PostgreSQL+pgvector for multi-replica
 - **API**: Stateless except SQLite — switch to PostgreSQL for multi-replica
-- **Matching**: Stateless, horizontally scalable
 - **Secrets**: Use K8s secrets or external secret manager (Vault, AWS Secrets Manager)
 
 ---
@@ -160,7 +153,7 @@ For serious scale. Use managed K8s (GKE, EKS, AKS).
 | `VFACE_ENCRYPTION_KEY` | API + Matching | ✅ | 64-char hex AES-256 key |
 | `MATCHING_SECRET` | API + Matching | ✅ | Shared auth secret |
 | `MATCHING_SERVICE_URL` | API | ✅ | URL to matching service |
-| `QDRANT_URL` | Matching | ✅ | URL to Qdrant |
+| `VECTOR_DB_PATH` | Matching | ❌ | Default: `./data/vectors.db` |
 | `PORT` | API | ❌ | Default: 3000 |
 | `COLLECTION_NAME` | Matching | ❌ | Default: vface_embeddings |
 | `VECTOR_DIM` | Matching | ❌ | Default: 128 |
@@ -172,19 +165,19 @@ For serious scale. Use managed K8s (GKE, EKS, AKS).
 - [ ] Generate unique `VFACE_ENCRYPTION_KEY` (never reuse dev key)
 - [ ] Generate unique `MATCHING_SECRET`
 - [ ] Persist server signing key (currently regenerated on restart)
-- [ ] Matching service and Qdrant are NOT publicly accessible
+- [ ] Matching service is NOT publicly accessible
 - [ ] HTTPS enabled (TLS termination via Caddy/nginx/cloud LB)
 - [ ] Rate limiting configured appropriately
-- [ ] Backup strategy for SQLite DB and Qdrant snapshots
-- [ ] Monitor disk usage (Qdrant HNSW index grows with data)
+- [ ] Backup strategy for SQLite DBs (registry + vectors) and persistent storage
+- [ ] Monitor disk usage (sqlite-vec DB grows with data)
 
 ---
 
 ## Cost Estimates
 
-| Scale | Qdrant RAM | VPS Cost | Managed Cost |
-|-------|-----------|----------|--------------|
-| 100K users | ~500MB | $6/mo | Free tier |
-| 1M users | ~2GB | $12/mo | ~$25/mo |
-| 10M users | ~20GB | $80/mo | ~$200/mo |
-| 100M users | ~200GB | Sharded | Custom pricing |
+| Scale | Storage | VPS Cost | Managed Cost |
+|-------|---------|----------|--------------|
+| 100K users | ~100MB | $6/mo | Free tier |
+| 1M users | ~500MB | $12/mo | ~$15/mo |
+| 10M users | ~5GB | $40/mo | ~$80/mo |
+| 100M users | ~50GB | Custom | Custom pricing |

@@ -5,10 +5,10 @@ Isolated FastAPI microservice for biometric vector operations.
 This is the ONLY service that decrypts and handles raw embeddings.
 
 Endpoints:
-  POST /enroll   — Decrypt embedding, store in Qdrant, zero memory
-  POST /search   — Decrypt embedding, search Qdrant, return match
-  POST /delete   — Soft-delete vector in Qdrant (revocation)
-  GET  /health   — Service health + Qdrant collection stats
+  POST /enroll   — Decrypt embedding, store in vector DB, zero memory
+  POST /search   — Decrypt embedding, search vectors, return match
+  POST /delete   — Soft-delete vector (revocation)
+  GET  /health   — Service health + vector store stats
 """
 
 import os
@@ -20,7 +20,7 @@ import numpy as np
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel
 
-from qdrant_store import get_client, ensure_collection, upsert_embedding, search_similar, delete_vector, get_collection_info, get_embedding
+from sqlite_vec_store import get_client, ensure_collection, upsert_embedding, search_similar, delete_vector, get_collection_info, get_embedding
 from crypto_utils import decrypt_embedding
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -31,33 +31,22 @@ SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.85"))
 REFRESH_THRESHOLD = float(os.getenv("REFRESH_THRESHOLD", "0.70"))  # Lower threshold for drift refresh
 DP_SIGMA = float(os.getenv("DP_SIGMA", "0.0"))  # Differential privacy noise (0 = disabled)
 
-# Global Qdrant client
-qdrant = None
+# Global vector store connection
+db = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize Qdrant collection on startup with retry."""
-    global qdrant
-    qdrant = get_client()
-
-    # Retry until Qdrant is reachable (cloud instances may take a moment)
-    max_retries = 10
-    for attempt in range(max_retries):
-        try:
-            ensure_collection(qdrant)
-            logger.info("Matching Service ready")
-            break
-        except Exception as e:
-            if attempt < max_retries - 1:
-                wait = 2 * (attempt + 1)
-                logger.warning(f"Qdrant not ready (attempt {attempt+1}/{max_retries}): {e}. Retrying in {wait}s...")
-                import asyncio
-                await asyncio.sleep(wait)
-            else:
-                logger.error(f"Qdrant unreachable after {max_retries} attempts. Starting in degraded mode.")
+    """Initialize sqlite-vec store on startup."""
+    global db
+    db = get_client()
+    ensure_collection(db)
+    logger.info("Matching Service ready (sqlite-vec)")
 
     yield
+
+    if db:
+        db.close()
     logger.info("Matching Service shutting down")
 
 
@@ -156,7 +145,7 @@ def enroll(req: EnrollRequest, x_matching_secret: str = Header(None)):
             vec = vec / norm
 
         # 4. Check for duplicate (Sybil check)
-        duplicates = search_similar(qdrant, vec.tolist(), threshold=SIMILARITY_THRESHOLD, top_k=1)
+        duplicates = search_similar(db, vec.tolist(), threshold=SIMILARITY_THRESHOLD, top_k=1)
         if duplicates:
             raise HTTPException(
                 409,
@@ -172,7 +161,7 @@ def enroll(req: EnrollRequest, x_matching_secret: str = Header(None)):
             if norm > 0:
                 vec = vec / norm  # Re-normalize after noise
 
-        # 6. Store in Qdrant
+        # 6. Store in vector DB
         payload = {
             "user_id": req.user_id or req.fingerprint,
             "status": "active",
@@ -181,7 +170,7 @@ def enroll(req: EnrollRequest, x_matching_secret: str = Header(None)):
         if req.metadata:
             payload["metadata"] = req.metadata
 
-        upsert_embedding(qdrant, req.fingerprint, vec.tolist(), payload)
+        upsert_embedding(db, req.fingerprint, vec.tolist(), payload)
 
         # 6. Zero memory
         vec.fill(0)
@@ -213,9 +202,9 @@ def search(req: SearchRequest, x_matching_secret: str = Header(None)):
         if norm > 0:
             vec = vec / norm
 
-        # 3. Search Qdrant
+        # 3. Search vector store
         threshold = req.threshold or SIMILARITY_THRESHOLD
-        results = search_similar(qdrant, vec.tolist(), threshold=threshold, top_k=req.top_k)
+        results = search_similar(db, vec.tolist(), threshold=threshold, top_k=req.top_k)
 
         # 4. Zero memory
         vec.fill(0)
@@ -245,7 +234,7 @@ def delete(req: DeleteRequest, x_matching_secret: str = Header(None)):
     verify_secret(x_matching_secret)
 
     try:
-        delete_vector(qdrant, req.fingerprint)
+        delete_vector(db, req.fingerprint)
         logger.info(f"Revoked vector: {req.fingerprint[:8]}...")
         return {"success": True, "fingerprint": req.fingerprint}
     except Exception as e:
@@ -264,7 +253,7 @@ def refresh(req: RefreshRequest, x_matching_secret: str = Header(None)):
 
     try:
         # 1. Get existing embedding
-        existing = get_embedding(qdrant, req.fingerprint)
+        existing = get_embedding(db, req.fingerprint)
         if not existing:
             raise HTTPException(404, "Identity not found in vector store")
 
@@ -295,12 +284,12 @@ def refresh(req: RefreshRequest, x_matching_secret: str = Header(None)):
         if blended_norm > 0:
             blended = blended / blended_norm
 
-        # 5. Update in Qdrant (preserve existing payload)
+        # 5. Update in vector store (preserve existing payload)
         payload = existing.get("payload", {})
         payload["refreshed_at"] = int(time.time())
         payload["drift_score"] = round(drift_score, 4)
 
-        upsert_embedding(qdrant, req.fingerprint, blended.tolist(), payload)
+        upsert_embedding(db, req.fingerprint, blended.tolist(), payload)
 
         # 6. Zero memory
         old_vec.fill(0)
@@ -326,12 +315,12 @@ def refresh(req: RefreshRequest, x_matching_secret: str = Header(None)):
 @app.get("/health")
 def health():
     try:
-        info = get_collection_info(qdrant)
+        info = get_collection_info(db)
         return {
             "status": "ok",
             "service": "V-Face Matching Service",
-            "version": "1.0.0",
-            "qdrant": info,
+            "version": "2.0.0",
+            "vector_store": info,
         }
     except Exception as e:
         return {"status": "degraded", "error": str(e)}

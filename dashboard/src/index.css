@@ -49,12 +49,9 @@ body {
     linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
 }
 
-/* Smooth transitions */
-* {
-  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
-}
+/* NOTE: Global * transition removed — it was causing lag on low-powered
+   devices by forcing the browser to track transition state on every DOM node.
+   Individual components use Tailwind transition classes where needed. */
 
 /* Animation utilities */
 @keyframes glow {
@@ -284,5 +281,118 @@ button {
 @media print {
   .no-print {
     display: none !important;
+  }
+}
+
+/* ─── AnimatedBackground: GPU-composited CSS animations ────────────── */
+
+.vface-orb {
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform;
+  transform: translateZ(0);  /* force GPU layer */
+}
+
+.vface-orb-1 {
+  top: 25%;
+  left: 25%;
+  width: 24rem;
+  height: 24rem;
+  background: rgba(124, 58, 237, 0.18);
+  filter: blur(60px);
+  animation: vface-float-1 20s linear infinite;
+}
+
+.vface-orb-2 {
+  bottom: 25%;
+  right: 25%;
+  width: 28rem;
+  height: 28rem;
+  background: rgba(34, 211, 238, 0.10);
+  filter: blur(60px);
+  animation: vface-float-2 25s linear infinite;
+}
+
+.vface-orb-3 {
+  top: 50%;
+  left: 50%;
+  width: 16rem;
+  height: 16rem;
+  background: rgba(124, 58, 237, 0.12);
+  filter: blur(50px);
+  animation: vface-float-3 18s ease-in-out infinite;
+}
+
+@keyframes vface-float-1 {
+  0%   { transform: translate(0, 0) scale(1); }
+  25%  { transform: translate(100px, -100px) scale(1.15); }
+  50%  { transform: translate(-100px, 100px) scale(0.85); }
+  75%  { transform: translate(50px, -50px) scale(1.1); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+@keyframes vface-float-2 {
+  0%   { transform: translate(0, 0) scale(1); }
+  25%  { transform: translate(-120px, 120px) scale(1.2); }
+  50%  { transform: translate(120px, -120px) scale(0.8); }
+  75%  { transform: translate(-60px, 60px) scale(1.1); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+@keyframes vface-float-3 {
+  0%   { transform: translate(0, 0) scale(1); }
+  33%  { transform: translate(-80px, 80px) scale(1.2); }
+  66%  { transform: translate(80px, -80px) scale(0.9); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+.vface-gradient-mesh {
+  position: absolute;
+  inset: 0;
+  will-change: background-position;
+  background-image:
+    radial-gradient(circle at 20% 50%, rgba(124, 58, 237, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(34, 211, 238, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 40% 20%, rgba(167, 139, 250, 0.08) 0%, transparent 50%);
+  background-size: 200% 200%;
+  animation: vface-gradient-shift 30s linear infinite;
+}
+
+@keyframes vface-gradient-shift {
+  0%   { background-position: 0% 0%; }
+  50%  { background-position: 100% 100%; }
+  100% { background-position: 0% 0%; }
+}
+
+.vface-scanline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  will-change: transform;
+  background: linear-gradient(to right, transparent, rgba(34, 211, 238, 0.2), transparent);
+  animation: vface-scan 8s linear infinite;
+}
+
+@keyframes vface-scan {
+  0%   { transform: translateY(-100vh); }
+  100% { transform: translateY(200vh); }
+}
+
+/* ─── Reduced Motion: respect user preference ─────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .vface-orb,
+  .vface-gradient-mesh,
+  .vface-scanline {
+    animation: none !important;
+  }
+
+  .animate-pulse,
+  .animate-spin,
+  .animate-glow,
+  .animate-shimmer,
+  .animate-pulse-glow {
+    animation: none !important;
   }
 }

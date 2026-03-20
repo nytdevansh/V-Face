@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import Navbar from './components/Navbar';
-import Dashboard from './components/Dashboard';
 import AnimatedBackground from './components/AnimatedBackground';
 import { useWallet } from './context/WalletContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// Lazy-load heavy components — face-api.js + react-webcam won't block initial paint
+const Dashboard = React.lazy(() => import('./components/Dashboard'));
+
 function App() {
   const { account, connectWallet, isConnecting, error, clearError } = useWallet();
-  const [showDashboard, setShowDashboard] = useState(false);
 
   return (
     <div className="min-h-screen font-sans selection:bg-cyan-500/30 selection:text-cyan-200 text-gray-100 relative overflow-hidden bg-gray-950">
@@ -152,7 +153,16 @@ function App() {
               </motion.div>
             </motion.div>
           ) : (
-            <Dashboard />
+            <Suspense fallback={
+              <div className="flex items-center justify-center min-h-[60vh]">
+                <div className="text-center space-y-4">
+                  <div className="w-12 h-12 border-t-2 border-cyan-500 rounded-full animate-spin mx-auto" />
+                  <p className="text-gray-400 font-mono text-sm">Loading dashboard...</p>
+                </div>
+              </div>
+            }>
+              <Dashboard />
+            </Suspense>
           )}
         </main>
       </div>

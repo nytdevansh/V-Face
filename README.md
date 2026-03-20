@@ -6,6 +6,8 @@
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.19-orange.svg)](https://soliditylang.org/)
 [![SDK](https://img.shields.io/badge/SDK-0.1.0--alpha-green.svg)](./sdk)
 [![Hardhat](https://img.shields.io/badge/Built%20with-Hardhat-yellow.svg)](https://hardhat.org/)
+[![Status](https://img.shields.io/badge/Phase-2%20Hardening-blueviolet.svg)](./STATUS.md)
+[![Matching](https://img.shields.io/badge/Matching-FastAPI%20%2B%20Qdrant-teal.svg)](./matching)
 
 > **Mission**: Allow users to verify their physical identity without exposing raw biometric data. Make unauthorized use of someone's likeness detectable and preventable.
 
@@ -19,10 +21,12 @@ V-Face is a **consent infrastructure** that lets users own their facial identity
 
 - 🧬 **Privacy First** — Face embeddings are generated client-side using MobileFaceNet (ONNX). Raw images and vectors never leave the user's device.
 - 🔒 **Irreversible Fingerprints** — Embeddings are L2-normalized, quantized, and SHA-256 hashed into a 64-char fingerprint that cannot reconstruct the original face.
-- 🎯 **Robust Matching** — Cosine similarity with a tuned 0.85 threshold for accurate verification.
+- 🎯 **Robust Matching** — Isolated FastAPI microservice with Qdrant vector DB; cosine similarity at 0.85 threshold, AES-256-GCM encrypted transfers.
 - 🪙 **Consent Tokens** — JWT-based tokens prove a user explicitly authorized an AI service to use their face for a specific purpose and duration.
-- ⛓️ **On-Chain Registry** — `VFaceRegistry.sol` on Polygon for immutable, censorship-resistant identity registration.
-- 🛡️ **Sybil Resistance** — One human = one identity.
+- ⛓️ **On-Chain Registry** — `VFaceRegistry.sol` + `FaceVerifier.sol` on Polygon for immutable, censorship-resistant identity registration.
+- 🛡️ **Sybil Resistance** — One human = one identity; enforced at enroll-time via duplicate vector search.
+- 🔑 **WebAuthn + Delegation** — Passwordless authentication and granular identity delegation.
+- 📋 **Hash-Chain Audit Log** — Tamper-evident server-side audit trail for all operations.
 
 ---
 
@@ -43,47 +47,42 @@ V-Face is a **consent infrastructure** that lets users own their facial identity
 
 ## 🚀 Quick Start
 
+> See [QUICKSTART.md](./QUICKSTART.md) for a 5-minute setup guide.
+
 ### Prerequisites
 
-- Node.js v16+
-- npm or yarn
-- A Web3 wallet (MetaMask) — for on-chain features
+- Node.js v18+
+- Python 3.11+ (for matching service)
+- Docker & Docker Compose (recommended)
+- MetaMask — optional, for on-chain features
 
-### Installation
+### Option A — Docker Compose (recommended)
 
 ```bash
-# Clone the repository
 git clone https://github.com/nytdevansh/V-Face
 cd V-Face
-
-# Install root dependencies (smart contract tooling)
-npm install
-
-# Install SDK dependencies
-cd sdk && npm install && cd ..
-
-# Install server dependencies
-cd server && npm install && cd ..
-
-# Copy environment variables
-cp .env.example .env
+cp .env.example .env   # fill in secrets
+docker-compose up
 ```
 
-### Run the Registry Server
+This starts the **registry server** (port 3000) and the **matching service** (port 8000) together.
+
+### Option B — Manual
 
 ```bash
-cd server
-node index.js
-# Registry API running on port 3000
-```
-
-### Run the Dashboard
-
-```bash
-cd dashboard
+# 1. Root deps (smart contract tooling)
 npm install
-npm run dev
-# Dashboard available at http://localhost:5173
+
+# 2. Registry server
+cd server && npm install && node index.js   # port 3000
+
+# 3. Matching service
+cd matching
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8000
+
+# 4. Dashboard
+cd dashboard && npm install && npm run dev  # port 5173
 ```
 
 ### Run Smart Contract Tests
@@ -170,21 +169,22 @@ const verification = await fetch('/verify', {
 ### 4. Privacy Architecture
 
 ```
-User Device          Registry Server         Blockchain
-     │                      │                     │
-     │  Face Image          │                     │
-     │  ──(local)──►        │                     │
-     │  Embedding (128-d)   │                     │
-     │  ──(local)──►        │                     │
-     │  Fingerprint (hash)  │                     │
-     │  ─────────────────►  │                     │
-     │                      │  Register(hash)     │
-     │                      │  ──────────────────►│
-     │                      │                     │
+Browser / App
+     │
+     ▼
+SDK (@v-face/sdk)              ← MobileFaceNet ONNX, client-side only
+     │ fingerprint + encrypted embedding
+     ▼
+Registry Server (Express)      ← Auth, Consent, Delegation, WebAuthn
+     │                             Hash-chain audit, Encryption at rest
+     ├──► Matching Service (FastAPI) ← AES-256-GCM decrypt, Qdrant search
+     │         Anomaly Detection, Group Identity, Embedding Refresh
+     └──► Blockchain (Polygon)      ← VFaceRegistry.sol, FaceVerifier.sol
 ```
 
-**What's stored on-chain:** `Hash → Owner address`
-**What's NOT on-chain:** ❌ Photos, ❌ Embeddings, ❌ Personal info
+**What's stored on-chain:** `Hash → Owner address`  
+**What's NOT on-chain:** ❌ Photos, ❌ Embeddings, ❌ Personal info  
+**What's in Qdrant:** Encrypted, normalized 128-d vectors (never plaintext at rest)
 
 ---
 
@@ -193,43 +193,59 @@ User Device          Registry Server         Blockchain
 ```
 V-Face/
 ├── contracts/
-│   └── VFaceRegistry.sol        # Solidity smart contract (registration, consent, revocation)
+│   ├── VFaceRegistry.sol         # Registration, consent, revocation
+│   └── FaceVerifier.sol          # On-chain fingerprint verification
 ├── sdk/                          # @v-face/sdk — client-side biometric SDK
-│   ├── index.js                  # VFaceSDK class (getFingerprint, getRawEmbedding)
-│   ├── embedding/                # MobileFaceNet ONNX embedding pipeline
-│   ├── fingerprint/              # L2 → quantize → SHA-256 fingerprint derivation
+│   ├── index.js                  # VFaceSDK (getFingerprint, getRawEmbedding)
+│   ├── embedding/                # MobileFaceNet ONNX pipeline
+│   ├── fingerprint/              # L2 → quantize → SHA-256 derivation
 │   ├── registry/                 # Registry API client
 │   ├── token/                    # Consent token utilities
 │   ├── src/                      # Core VFace class & face extraction
-│   ├── demo_cli.js               # CLI demo: enrollment & verification
-│   └── test/                     # SDK unit tests & robustness tests
-├── server/                       # Express registry API server
-│   ├── index.js                  # REST API (register, check, revoke, consent, verify)
-│   ├── db.js                     # SQLite database layer
-│   ├── auth/                     # Authentication module
+│   └── test/                     # SDK unit & robustness tests
+├── server/                       # Express registry API
+│   ├── index.js                  # REST API (~23 KB)
+│   ├── db.js                     # SQLite layer
+│   ├── auth/                     # Authentication
 │   ├── consent/                  # Consent management
-│   └── registry/                 # Registry logic
-├── dashboard/                    # React + Vite admin dashboard
-├── playground/                   # React + Vite demo/testing playground
-├── model/                        # MobileFaceNet ONNX model file
+│   ├── delegation/               # Identity delegation
+│   ├── webauthn/                 # WebAuthn / passkey support
+│   ├── admin/                    # Admin API
+│   ├── ipfs/                     # IPFS storage integration
+│   ├── registry/                 # Registry logic
+│   ├── hashchain.js              # Tamper-evident audit log
+│   ├── encryption.js             # Encryption at rest
+│   ├── key_rotation.js           # Key rotation
+│   └── matching_client.js        # Matching service client
+├── matching/                     # Isolated FastAPI microservice
+│   ├── main.py                   # FastAPI app (v1.1.0)
+│   ├── qdrant_store.py           # Qdrant vector DB layer
+│   ├── crypto_utils.py           # AES-256-GCM crypto
+│   ├── anomaly.py                # Anomaly detection & rate limiting
+│   ├── group_identity.py         # Multi-face group support
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   └── fly.toml                  # Fly.io deployment config
+├── extension/                    # Browser extension (MV3)
+│   ├── manifest.json
+│   ├── content.js
+│   └── popup.html
+├── dashboard/                    # React + Vite admin dashboard (Vercel)
+├── playground/                   # React + Vite demo app
+├── model/                        # MobileFaceNet ONNX model
 ├── docs/                         # Technical documentation
-│   ├── architecture.md           # System architecture & trust boundaries
-│   ├── fingerprint_spec.md       # Fingerprint algorithm specification
-│   ├── token_spec.md             # Consent token (JWT) specification
-│   ├── threat_model.md           # Threat model & security analysis
-│   ├── integration-guide.md      # SDK integration guide
-│   ├── false-positive-analysis.md
-│   └── robustness-report.md      # Adversarial robustness testing
 ├── examples/
-│   └── llm_guard.js              # Example: LLM biometric guard
+│   └── llm_guard.js              # LLM biometric guard example
 ├── scripts/
 │   └── deploy.js                 # Smart contract deployment
 ├── test/
-│   └── VFaceRegistry.test.js     # Smart contract tests
-├── hardhat.config.js             # Hardhat configuration
+│   └── VFaceRegistry.test.js     # Contract tests
+├── docker-compose.yml            # Full-stack local dev
+├── hardhat.config.js
+├── STATUS.md                     # 📊 Project status tracker
 ├── PROTOCOL.md                   # Full protocol specification
-├── CONTRIBUTING.md               # Contributor guide
-└── QUICKSTART.md                 # 5-minute setup guide
+├── CONTRIBUTING.md
+└── QUICKSTART.md
 ```
 
 ---
@@ -293,23 +309,34 @@ npm run deploy:mainnet
 
 ### Phase 1: Foundation ✅ *Complete*
 - [x] Protocol specification
-- [x] Smart contract (`VFaceRegistry.sol`)
-- [x] Comprehensive contract tests
+- [x] Smart contracts (`VFaceRegistry.sol`, `FaceVerifier.sol`)
+- [x] Comprehensive contract test suite
 - [x] Deployment scripts
 - [x] JavaScript SDK (`@v-face/sdk`)
 - [x] Registry server (Express + SQLite)
-- [x] Dashboard (React + Vite)
+- [x] Dashboard (React + Vite, deployed on Vercel)
 - [x] Playground demo app
-- [x] Documentation (architecture, fingerprint spec, threat model, token spec, integration guide)
+- [x] Documentation suite (architecture, fingerprint, threat model, token spec, integration guide)
 - [x] Consent token system (JWT-based)
 - [x] LLM Guard example
 
 ### Phase 2: Hardening 🔨 *In Progress*
+- [x] Isolated matching microservice (FastAPI + Qdrant)
+- [x] AES-256-GCM encrypted embedding transfers
+- [x] Embedding drift refresh endpoint
+- [x] Differential privacy noise (optional)
+- [x] Anomaly detection & rate limiting
+- [x] Multi-face group identity
+- [x] WebAuthn / passkey authentication
+- [x] Identity delegation
+- [x] Hash-chain tamper-evident audit log
+- [x] Encryption at rest + key rotation
+- [x] Browser extension (Manifest v3)
+- [x] IPFS storage integration
+- [ ] Deploy matching service to Fly.io (production)
 - [ ] Deploy to Polygon Mumbai testnet
-- [ ] Community security review
-- [ ] Improve fingerprint robustness (LSH fuzzy matching)
-- [ ] Encrypt stored embeddings at rest
 - [ ] End-to-end integration testing
+- [ ] Community security review
 - [ ] Bug bounty program
 
 ### Phase 3: Launch
@@ -322,7 +349,6 @@ npm run deploy:mainnet
 ### Phase 4: Growth
 - [ ] Multi-chain support (Ethereum, Arbitrum)
 - [ ] Mobile SDKs (iOS, Android)
-- [ ] Browser extension
 - [ ] DAO governance
 - [ ] Academic partnerships
 

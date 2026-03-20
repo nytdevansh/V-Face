@@ -38,11 +38,20 @@ module.exports = {
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       chainId: 137,
     },
+
+    // Polygon Amoy Testnet (FREE — replacement for deprecated Mumbai)
+    // Get free testnet MATIC: https://faucet.polygon.technology/
+    polygon_amoy: {
+      url: process.env.POLYGON_AMOY_RPC_URL || "https://rpc-amoy.polygon.technology",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 80002,
+    },
   },
   etherscan: {
     apiKey: {
       worldchain: process.env.WORLDSCAN_API_KEY || "",
       polygon: process.env.POLYGONSCAN_API_KEY || "",
+      polygon_amoy: process.env.POLYGONSCAN_API_KEY || "",
     },
     customChains: [
       {
@@ -51,6 +60,14 @@ module.exports = {
         urls: {
           apiURL: "https://api.worldscan.org/api",
           browserURL: "https://worldscan.org",
+        },
+      },
+      {
+        network: "polygon_amoy",
+        chainId: 80002,
+        urls: {
+          apiURL: "https://api-amoy.polygonscan.com/api",
+          browserURL: "https://amoy.polygonscan.com",
         },
       },
     ],

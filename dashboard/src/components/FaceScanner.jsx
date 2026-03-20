@@ -34,12 +34,14 @@ export default function FaceScanner({ onCancel, onScanComplete }) {
         loadModels();
     }, []);
 
-    // Real-time face detection for feedback
+    // Real-time face detection for feedback — throttled for performance
     useEffect(() => {
         if (loadingModels || scanning) return;
 
+        let active = true;
+
         const detectFace = async () => {
-            if (!webcamRef.current) return;
+            if (!active || !webcamRef.current || document.hidden) return;
 
             try {
                 const imageSrc = webcamRef.current.getScreenshot();
@@ -50,14 +52,26 @@ export default function FaceScanner({ onCancel, onScanComplete }) {
                 await new Promise(resolve => img.onload = resolve);
 
                 const detection = await faceapi.detectSingleFace(img);
-                setFaceDetected(!!detection);
+                if (active) setFaceDetected(!!detection);
             } catch (err) {
-                setFaceDetected(false);
+                if (active) setFaceDetected(false);
             }
         };
 
-        const interval = setInterval(detectFace, 1000);
-        return () => clearInterval(interval);
+        // 2.5s intervals — responsive enough for UX, 60% less CPU than 1s
+        const interval = setInterval(detectFace, 2500);
+
+        // Pause detection when tab is hidden
+        const onVisibilityChange = () => {
+            if (document.hidden) setFaceDetected(false);
+        };
+        document.addEventListener('visibilitychange', onVisibilityChange);
+
+        return () => {
+            active = false;
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+        };
     }, [loadingModels, scanning]);
 
     const handleScan = async () => {

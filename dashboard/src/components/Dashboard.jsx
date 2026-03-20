@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useWallet } from '../context/WalletContext';
 import Webcam from 'react-webcam';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -21,7 +21,7 @@ export default function Dashboard() {
     const [verifyResult, setVerifyResult] = useState(null);
     const [verifyFp, setVerifyFp] = useState(null);
 
-    const capture = () => {
+    const capture = useCallback(() => {
         try {
             const webcamRef = activeTab === 'register' ? registerWebcamRef : verifyWebcamRef;
             const imageSrc = webcamRef.current?.getScreenshot();
@@ -39,7 +39,7 @@ export default function Dashboard() {
             console.error('Capture error:', err);
             setError('Camera error: ' + (err.message || 'Unknown error'));
         }
-    };
+    }, [activeTab]);
 
     // Check server connectivity on mount
     useEffect(() => {
@@ -276,6 +276,7 @@ export default function Dashboard() {
                         <div className="space-y-4">
                             <h2 className="text-xl font-bold">1. Capture Face</h2>
                             <div className="aspect-video bg-black rounded-lg overflow-hidden border border-white/10">
+                                {/* Only mount webcam when on register tab AND no image captured */}
                                 {!imgSrc ? (
                                     <Webcam ref={registerWebcamRef} audio={false} screenshotFormat="image/jpeg" className="w-full h-full" />
                                 ) : (
@@ -346,6 +347,7 @@ export default function Dashboard() {
                         <div className="space-y-4">
                             <h2 className="text-xl font-bold">1. Scan Face</h2>
                             <div className="aspect-video bg-black rounded-lg overflow-hidden border border-white/10">
+                                {/* Only mount webcam when on verify tab AND no image captured */}
                                 {!verifyImg ? (
                                     <Webcam ref={verifyWebcamRef} audio={false} screenshotFormat="image/jpeg" className="w-full h-full" />
                                 ) : (

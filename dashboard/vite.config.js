@@ -5,6 +5,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
+    // Target modern browsers for smaller bundles
+    target: 'es2020',
     rollupOptions: {
       external: ['fs', 'canvas'],
       onwarn(warning, warn) {
@@ -18,6 +20,13 @@ export default defineConfig({
         globals: {
           fs: 'fs',
           canvas: 'canvas',
+        },
+        // Split large dependencies into separate chunks for parallel loading + caching
+        manualChunks: {
+          'face-api': ['face-api.js'],
+          'framer': ['framer-motion'],
+          'ethers': ['ethers'],
+          'react-vendor': ['react', 'react-dom'],
         },
       },
     },
